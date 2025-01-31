@@ -37,6 +37,7 @@ with st.sidebar:
         hora_cierre = st.slider("Hora de cierre de tienda", 0, 23, 22)
         turno_recursos = st.slider("Duración del turno de trabajo (horas)", 4, 12, 8)
         factor_productivo = st.slider("Factor Productivo (%)", min_value=50, max_value=100, value=85, step=1)
+        dias_pronostico = st.slider("Días de Pronóstico", min_value=1, max_value=31, value=30, step=1)
     
     with st.expander("📅 ¿Evento Especial?"):
         evento_especial = st.checkbox("¿Habrá un evento especial?")
@@ -88,52 +89,35 @@ def generar_reporte(df):
     df['Dia'] = df['Fecha'].dt.date
     resumen = df.groupby('Hora')['FTEs'].median()
     
-    # Graficar los FTEs medianos por hora con estilo mejorado
-    st.header("📊 Pronóstico Mediano de Recursos por Hora")
-    fig, ax = plt.subplots(figsize=(10, 5))
-    sns.barplot(x=resumen.index, y=resumen.values, ax=ax, color="#c7e59f", label="Recursos Necesarios")
-    ax.set_xlabel("Hora del Día", fontsize=12)
-    ax.set_ylabel("FTEs Necesarios", fontsize=12)
-    ax.set_title("Recursos Medianos Necesarios por Hora", fontsize=14, fontweight='bold')
-    st.pyplot(fig)
+    # Crear layout de primera fila con gráfica y tabla semaforizada
+    col1, col2 = st.columns([2, 1])
     
-    # Generar gráficos día por día si la opción está activada
-    if resumen_detallado:
-        st.header("📊 Recursos Necesarios por Día")
-        cols = st.columns(5)  # Mostrar 5 gráficos por fila
-        dias_unicos = df['Dia'].unique()[-30:]
-        for idx, dia in enumerate(dias_unicos):
-            dia_resumen = df[df['Dia'] == dia].groupby('Hora')['FTEs'].median()
-            fig, ax = plt.subplots(figsize=(4, 3))
-            sns.barplot(x=dia_resumen.index, y=dia_resumen.values, ax=ax, color="#1e9d51")
-            ax.set_title(f"{dia}", fontsize=10)
-            ax.set_xlabel("Hora", fontsize=8)
-            ax.set_ylabel("FTEs", fontsize=8)
-            cols[idx % 5].pyplot(fig)
+    with col1:
+        st.header("📊 Pronóstico Mediano de Recursos por Hora")
+        fig, ax = plt.subplots(figsize=(10, 5))
+        sns.barplot(x=resumen.index, y=resumen.values, ax=ax, color="#c7e59f", label="Recursos Necesarios")
+        ax.set_xlabel("Hora del Día", fontsize=12)
+        ax.set_ylabel("FTEs Necesarios", fontsize=12)
+        ax.set_title("Recursos Medianos Necesarios por Hora", fontsize=14, fontweight='bold')
+        st.pyplot(fig)
     
-    # Generación del Reporte en PDF
-    report_name = f"reporte_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    report_path = os.path.join(REPORTS_DIR, report_name)
-    try:
-        c = canvas.Canvas(report_path, pagesize=letter)
-        c.drawString(100, 750, "Reporte de Planificación de Recursos")
-        c.drawString(100, 730, f"Fecha de generación: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        c.drawString(100, 710, f"Factor Productivo: {factor_productivo}%")
-        c.drawString(100, 690, f"Productividad promedio: {round(productividad_promedio, 2)} items/hora")
-        c.save()
-        st.success(f"✅ Reporte generado: {report_name}")
-        with open(report_path, "rb") as f:
-            st.download_button("📥 Descargar Reporte", f, file_name=report_name, mime="application/pdf")
-    except Exception as e:
-        st.error(f"❌ Error al generar el reporte PDF: {e}")
+    with col2:
+        st.header("📋 Resumen Hora vs Día")
+        resumen_tabla = df.groupby(['Dia', 'Hora'])['FTEs'].sum().unstack().tail(dias_pronostico)
+        st.dataframe(resumen_tabla.style.applymap(lambda x: "background-color: #ffcccc" if x > resumen.median() * 1.5 else ("background-color: #ccffcc" if x < resumen.median() * 0.5 else "")))
+    
+    # Tabla de Productividad de Pickers
+    st.header("🏆 Productividad de Pickers")
+    ranking = df.groupby('picker').agg({
+        'items': 'sum',
+        'actual_fin_picking': 'count',
+        'ontime': lambda x: (x == 'on_time').sum()
+    }).rename(columns={'items': 'Total Items', 'actual_fin_picking': 'Órdenes Procesadas', 'ontime': 'Órdenes On_Time'})
+    ranking['Velocidad Promedio (Items/h)'] = ranking['Total Items'] / ranking['Órdenes Procesadas']
+    ranking['% Órdenes On_Time'] = (ranking['Órdenes On_Time'] / ranking['Órdenes Procesadas']) * 100
+    ranking['Puntaje'] = ranking[['Total Items', 'Velocidad Promedio (Items/h)', '% Órdenes On_Time']].mean(axis=1)
+    ranking.fillna(1, inplace=True)  # Reemplazar valores None por 1
+    ranking = ranking.sort_values(by='Puntaje', ascending=False)
+    st.dataframe(ranking)
 
-# Cargar y visualizar el CSV
-if archivo_csv is not None:
-    df = pd.read_csv(archivo_csv)
-    st.success("✅ Archivo cargado correctamente")
-    st.dataframe(df.head())
-
-    if st.button("📄 Generar Reporte PDF"):
-        generar_reporte(df)
-
-st.write("🚀 Listo para generar reportes en la nube con In-staffing!")
+st.write("🚀 Listo para generar reportes en la nube con Streamlit!")
