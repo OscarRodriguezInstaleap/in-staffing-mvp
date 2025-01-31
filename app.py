@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
+import seaborn as sns
 from datetime import datetime, timedelta
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
@@ -12,6 +13,10 @@ st.set_page_config(page_title="In-Staffing MVP", layout="wide")
 # Carpeta para almacenar reportes PDF
 REPORTS_DIR = "reports"
 os.makedirs(REPORTS_DIR, exist_ok=True)
+
+# Estilos gráficos
+plt.rcParams['font.family'] = 'Montserrat'
+sns.set_style("whitegrid")
 
 st.title("📊 In-Staffing: Planificación de Recursos")
 st.markdown("---")
@@ -71,28 +76,30 @@ def generar_reporte(df):
     if evento_especial:
         df['FTEs'] *= (1 + impacto_evento / 100)
     
-    # Agrupar datos por día y hora
+    # Agrupar datos por hora para el promedio general
     df['Dia'] = df['Fecha'].dt.date
-    resumen = df.groupby(['Dia', 'Hora'])['FTEs'].sum().unstack()
+    resumen = df.groupby('Hora')['FTEs'].mean()
     
-    # Rellenar valores nulos con la hora inmediatamente anterior
-    resumen = resumen.fillna(method='ffill', axis=1)
+    # Graficar los FTEs promedio por hora
+    st.header("📊 Pronóstico Promedio de Recursos por Hora")
+    fig, ax = plt.subplots(figsize=(10, 5))
+    sns.barplot(x=resumen.index, y=resumen.values, ax=ax, palette=["#c7e59f", "#1e9d51"])
+    ax.set_xlabel("Hora del Día")
+    ax.set_ylabel("FTEs Necesarios")
+    ax.set_title("Recursos Promedio Necesarios por Hora")
+    for p in ax.patches:
+        ax.annotate(f'{p.get_height():.2f}', (p.get_x() + p.get_width() / 2., p.get_height()), ha='center', va='bottom')
+    st.pyplot(fig)
     
-    # Generar gráficos individuales por día
-    st.header("📈 Pronóstico de Recursos para los Próximos 30 Días")
-    for dia in resumen.index[-30:]:
-        fig, ax = plt.subplots(figsize=(10, 5))
-        ax.plot(resumen.columns, resumen.loc[dia], marker='o', linestyle='-', label=dia.strftime('%Y-%m-%d'))
-        ax.set_xlabel("Hora del Día")
-        ax.set_ylabel("FTEs Necesarios")
-        ax.set_title(f"Recursos necesarios para {dia.strftime('%Y-%m-%d')}")
-        ax.legend()
-        ax.grid(True)
-        st.pyplot(fig)
+    # Mostrar resumen en tabla con semáforo de datos extremos
+    st.header("📋 Resumen de FTEs por Hora (Últimos 30 Días)")
+    resumen_tabla = df.groupby(['Dia', 'Hora'])['FTEs'].sum().unstack().tail(30)
+    st.dataframe(resumen_tabla.style.applymap(lambda x: "background-color: #ffcccc" if x > resumen.mean() * 1.5 else ("background-color: #ccffcc" if x < resumen.mean() * 0.5 else "")))
     
-    # Mostrar resumen en tabla
-    st.header("📋 Resumen de FTEs por Hora y Día")
-    st.dataframe(resumen)
+    # Generar tabla de ranking de productividad de pickers
+    st.header("🏆 Ranking de Productividad de Pickers")
+    ranking = df.groupby('picker')['items'].sum().sort_values(ascending=False)
+    st.dataframe(ranking)
     
     # Generación del Reporte en PDF
     report_name = f"reporte_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
@@ -105,13 +112,6 @@ def generar_reporte(df):
         c.drawString(100, 690, f"Productividad promedio: {round(productividad_promedio, 2)} items/hora")
         if evento_especial:
             c.drawString(100, 670, f"Evento Especial: {fecha_inicio} - {fecha_fin} (+{impacto_evento}%)")
-        
-        y_position = 650
-        for dia, row in resumen.iterrows():
-            c.drawString(100, y_position, f"{dia}: {row.sum()} FTEs Totales")
-            y_position -= 20
-            if y_position < 100:
-                break
         
         c.save()
         st.success(f"✅ Reporte generado: {report_name}")
