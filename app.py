@@ -19,22 +19,37 @@ st.markdown("---")
 st.header("📂 Cargar Archivo CSV")
 archivo_csv = st.file_uploader("Sube un archivo de datos de operaciones (CSV)", type=["csv"])
 
-def generar_reporte(df):
+# Parámetros adicionales en la barra lateral
+st.sidebar.header("⚙️ Configuración de Parámetros")
+
+# Factor de fatiga (cómo afecta el rendimiento de los empleados)
+factor_fatiga = st.sidebar.slider("Factor de Fatiga (%)", min_value=50, max_value=100, value=85, step=1)
+
+# Evento especial
+evento_especial = st.sidebar.checkbox("¿Habrá un evento especial?")
+if evento_especial:
+    fecha_inicio = st.sidebar.date_input("Fecha de inicio del evento")
+    fecha_fin = st.sidebar.date_input("Fecha de fin del evento")
+    impacto_evento = st.sidebar.slider("Incremento en demanda (%)", min_value=0, max_value=100, value=20, step=1)
+
+def generar_reporte(df, factor_fatiga, evento_especial, impacto_evento):
     if df is None:
         st.error("No hay datos para generar el reporte.")
         return
     
     try:
-        # Convertir la columna de datos a números
+        # Convertir la columna relevante a numérico
         df.iloc[:, 1] = pd.to_numeric(df.iloc[:, 1], errors="coerce")
         
-        # Verificar si hay valores no numéricos
         if df.iloc[:, 1].isna().sum() > 0:
             st.error("❌ Hay valores no numéricos en la columna de datos. Verifica el archivo CSV.")
             return
 
-        # Cálculo del pronóstico
-        df['Recursos Necesarios'] = df.iloc[:, 1] / 19
+        # Aplicar factor de fatiga y eventos especiales en el cálculo
+        ajuste_fatiga = factor_fatiga / 100
+        ajuste_evento = (1 + impacto_evento / 100) if evento_especial else 1
+        
+        df['Recursos Necesarios'] = (df.iloc[:, 1] / 19) * ajuste_fatiga * ajuste_evento
     
     except Exception as e:
         st.error(f"❌ Error en el cálculo del pronóstico: {e}")
@@ -48,7 +63,9 @@ def generar_reporte(df):
         c = canvas.Canvas(report_path, pagesize=letter)
         c.drawString(100, 750, "Reporte de Planificación de Recursos")
         c.drawString(100, 730, f"Fecha de generación: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        c.drawString(100, 710, "Factor de Fatiga: 85%")
+        c.drawString(100, 710, f"Factor de Fatiga: {factor_fatiga}%")
+        if evento_especial:
+            c.drawString(100, 690, f"Evento Especial: {fecha_inicio} - {fecha_fin} (+{impacto_evento}%)")
         c.save()
         st.success(f"✅ Reporte generado: {report_name}")
         with open(report_path, "rb") as f:
@@ -63,6 +80,6 @@ if archivo_csv is not None:
     st.dataframe(df.head())
 
     if st.button("📄 Generar Reporte PDF"):
-        generar_reporte(df)
+        generar_reporte(df, factor_fatiga, evento_especial, impacto_evento)
 
 st.write("🚀 Listo para generar reportes en la nube con Streamlit!")
