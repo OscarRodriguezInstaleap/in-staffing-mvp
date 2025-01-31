@@ -63,19 +63,25 @@ def generar_reporte(df):
     if evento_especial:
         df['FTEs'] *= (1 + impacto_evento / 100)
     
-    # Agrupar datos por hora y día
+    # Agrupar datos por día y hora
     df['Dia'] = df['Fecha'].dt.date
     resumen = df.groupby(['Dia', 'Hora'])['FTEs'].sum().unstack()
     
-    # Generar gráficos
+    # Generar gráficos individuales por día
     st.header("📈 Pronóstico de Recursos para los Próximos 30 Días")
-    fig, ax = plt.subplots(figsize=(12, 6))
     for dia in resumen.index[-30:]:
-        ax.plot(resumen.columns, resumen.loc[dia], label=dia.strftime('%Y-%m-%d'))
-    ax.set_xlabel("Hora del Día")
-    ax.set_ylabel("FTEs Necesarios")
-    ax.legend()
-    st.pyplot(fig)
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.plot(resumen.columns, resumen.loc[dia], marker='o', linestyle='-', label=dia.strftime('%Y-%m-%d'))
+        ax.set_xlabel("Hora del Día")
+        ax.set_ylabel("FTEs Necesarios")
+        ax.set_title(f"Recursos necesarios para {dia.strftime('%Y-%m-%d')}")
+        ax.legend()
+        ax.grid(True)
+        st.pyplot(fig)
+    
+    # Mostrar resumen en tabla
+    st.header("📋 Resumen de FTEs por Hora y Día")
+    st.dataframe(resumen)
     
     # Generación del Reporte en PDF
     report_name = f"reporte_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
@@ -87,12 +93,11 @@ def generar_reporte(df):
         c.drawString(100, 710, f"Factor de Fatiga: {factor_fatiga}%")
         if evento_especial:
             c.drawString(100, 690, f"Evento Especial: {fecha_inicio} - {fecha_fin} (+{impacto_evento}%)")
-        c.drawString(100, 670, "Resumen de Productividad:")
+        c.drawString(100, 670, "Resumen de Recursos por Hora:")
         
         y_position = 650
-        productividad = df.groupby('picker')['items'].sum().reset_index()
-        for index, row in productividad.iterrows():
-            c.drawString(100, y_position, f"{row['picker']}: {row['items']} ítems recogidos")
+        for dia, row in resumen.iterrows():
+            c.drawString(100, y_position, f"{dia}: {row.sum()} FTEs Totales")
             y_position -= 20
             if y_position < 100:
                 break
