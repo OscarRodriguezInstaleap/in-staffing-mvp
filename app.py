@@ -23,12 +23,21 @@ def generar_reporte(df):
     if df is None:
         st.error("No hay datos para generar el reporte.")
         return
-
-    # Simulación de pronóstico (Ejemplo basado en la primera columna de datos)
+    
     try:
+        # Convertir la columna de datos a números
+        df.iloc[:, 1] = pd.to_numeric(df.iloc[:, 1], errors="coerce")
+        
+        # Verificar si hay valores no numéricos
+        if df.iloc[:, 1].isna().sum() > 0:
+            st.error("❌ Hay valores no numéricos en la columna de datos. Verifica el archivo CSV.")
+            return
+
+        # Cálculo del pronóstico
         df['Recursos Necesarios'] = df.iloc[:, 1] / 19
+    
     except Exception as e:
-        st.error(f"Error en el cálculo del pronóstico: {e}")
+        st.error(f"❌ Error en el cálculo del pronóstico: {e}")
         return
 
     # Generación del Reporte en PDF
@@ -39,7 +48,7 @@ def generar_reporte(df):
         c = canvas.Canvas(report_path, pagesize=letter)
         c.drawString(100, 750, "Reporte de Planificación de Recursos")
         c.drawString(100, 730, f"Fecha de generación: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        c.drawString(100, 710, "Factor de Fatiga: 85%")  # Valor predeterminado
+        c.drawString(100, 710, "Factor de Fatiga: 85%")
         c.save()
         st.success(f"✅ Reporte generado: {report_name}")
         with open(report_path, "rb") as f:
