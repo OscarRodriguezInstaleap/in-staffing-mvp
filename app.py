@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime, timedelta
@@ -26,22 +27,20 @@ st.header("📂 Cargar Archivo CSV")
 archivo_csv = st.file_uploader("Sube un archivo de datos de operaciones (CSV)", type=["csv"])
 
 # Parámetros adicionales en la barra lateral
-st.sidebar.header("⚙️ Configuración de Parámetros")
-
-# Horario de tienda
-hora_apertura = st.sidebar.slider("Hora de apertura de tienda", 0, 23, 8)
-hora_cierre = st.sidebar.slider("Hora de cierre de tienda", 0, 23, 22)
-turno_recursos = st.sidebar.slider("Duración del turno de trabajo (horas)", 4, 12, 8)
-
-# Factor productivo (antes llamado Factor de Fatiga)
-factor_productivo = st.sidebar.slider("Factor Productivo (%)", min_value=50, max_value=100, value=85, step=1)
-
-# Evento especial
-evento_especial = st.sidebar.checkbox("¿Habrá un evento especial?")
-if evento_especial:
-    fecha_inicio = st.sidebar.date_input("Fecha de inicio del evento")
-    fecha_fin = st.sidebar.date_input("Fecha de fin del evento")
-    impacto_evento = st.sidebar.slider("Incremento en demanda (%)", min_value=0, max_value=100, value=20, step=1)
+with st.sidebar:
+    with st.expander("⚙️ Configuraciones Generales"):
+        hora_apertura = st.slider("Hora de apertura de tienda", 0, 23, 8)
+        hora_cierre = st.slider("Hora de cierre de tienda", 0, 23, 22)
+        turno_recursos = st.slider("Duración del turno de trabajo (horas)", 4, 12, 8)
+    
+    with st.expander("📅 ¿Evento Especial?"):
+        evento_especial = st.checkbox("¿Habrá un evento especial?")
+        if evento_especial:
+            fecha_inicio = st.date_input("Fecha de inicio del evento")
+            fecha_fin = st.date_input("Fecha de fin del evento")
+            impacto_evento = st.slider("Incremento en demanda (%)", min_value=0, max_value=200, value=20, step=1)
+    
+    resumen_detallado = st.checkbox("📊 Resumen Detallado (Día por Día)")
 
 def procesar_datos(df):
     # Convertir columnas de fecha y hora a datetime
@@ -56,7 +55,7 @@ def procesar_datos(df):
     # Calcular la productividad promedio de los pickers
     productividad_promedio = df.groupby('picker')['items'].mean().mean()
     if pd.isna(productividad_promedio):
-        productividad_promedio = 200  # Valor por defecto si no hay datos
+        productividad_promedio = 100  # Valor por defecto si no hay datos
     
     # Filtrar datos dentro del horario de tienda
     df['Hora'] = df['actual_inicio_picking'].dt.hour
@@ -72,11 +71,15 @@ def generar_reporte(df):
     df, productividad_promedio = procesar_datos(df)
     
     # Calcular FTEs por hora basado en la productividad real de la tienda
-    df['FTEs'] = (df['items'] / productividad_promedio) * (factor_productivo / 100)
+    df['FTEs'] = (df['items'] / productividad_promedio)
     if evento_especial:
         df['FTEs'] *= (1 + impacto_evento / 100)
     
-    # Agrupar datos por hora utilizando la mediana en vez del promedio
+    # Filtrar valores extremos (percentil 80)
+    lower_bound, upper_bound = np.percentile(df['FTEs'].dropna(), [10, 90])
+    df = df[(df['FTEs'] >= lower_bound) & (df['FTEs'] <= upper_bound)]
+    
+    # Agrupar datos por hora usando la mediana
     df['Dia'] = df['Fecha'].dt.date
     resumen = df.groupby('Hora')['FTEs'].median()
     
@@ -89,20 +92,18 @@ def generar_reporte(df):
     ax.set_title("Recursos Medianos Necesarios por Hora")
     st.pyplot(fig)
     
-    # Generar ranking de pickers
-    st.header("🏆 Rankings de Productividad de Pickers")
-    top_items = df.groupby('picker')['items'].sum().nlargest(10)
-    top_velocidad = df.groupby('picker')['actual_fin_picking'].count().nlargest(10)
-    top_ontime = df[df['ontime'] == 'on_time'].groupby('picker')['items'].count().nlargest(10)
+    # Generar ranking de productividad
+    st.header("🏆 Ranking de Productividad de Pickers")
+    ranking = df.groupby('picker').agg({
+        'items': 'sum',
+        'actual_fin_picking': 'count',
+        'ontime': lambda x: (x == 'on_time').sum()
+    }).rename(columns={'items': 'Total Items', 'actual_fin_picking': 'Órdenes Procesadas', 'ontime': 'Órdenes On_Time'})
+    ranking['Velocidad Promedio (Items/h)'] = ranking['Total Items'] / ranking['Órdenes Procesadas']
+    ranking.fillna(1, inplace=True)  # Reemplazar valores None por 1
+    st.dataframe(ranking.nlargest(10, 'Total Items'))
     
-    st.subheader("🔝 Top 10 Pickers con Más Items")
-    st.dataframe(top_items)
-    st.subheader("⚡ Top 10 Pickers Más Rápidos")
-    st.dataframe(top_velocidad)
-    st.subheader("⏳ Top 10 Pickers con Más Entregas a Tiempo")
-    st.dataframe(top_ontime)
-    
-    # Crear tabla de pronóstico semaforizado
+    # Generar tabla de pronóstico semaforizado
     st.header("📋 Pronóstico de Recursos por Día y Hora (Semaforizado)")
     resumen_tabla = df.groupby(['Dia', 'Hora'])['FTEs'].sum().unstack().tail(30)
     st.dataframe(resumen_tabla.style.applymap(lambda x: "background-color: #ffcccc" if x > resumen.median() * 1.5 else ("background-color: #ccffcc" if x < resumen.median() * 0.5 else "")))
@@ -114,8 +115,7 @@ def generar_reporte(df):
         c = canvas.Canvas(report_path, pagesize=letter)
         c.drawString(100, 750, "Reporte de Planificación de Recursos")
         c.drawString(100, 730, f"Fecha de generación: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        c.drawString(100, 710, f"Factor Productivo: {factor_productivo}%")
-        c.drawString(100, 690, f"Productividad promedio: {round(productividad_promedio, 2)} items/hora")
+        c.drawString(100, 710, f"Productividad promedio: {round(productividad_promedio, 2)} items/hora")
         c.save()
         st.success(f"✅ Reporte generado: {report_name}")
         with open(report_path, "rb") as f:
