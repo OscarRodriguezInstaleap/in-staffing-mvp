@@ -23,38 +23,26 @@ plt.rcParams['axes.grid'] = True
 plt.rcParams['grid.linestyle'] = '--'
 sns.set_style("whitegrid")
 
-st.title("📊 In-Staffing: Planificación de Recursos")
-st.markdown("---")
-
-# Sección para cargar el archivo CSV
-st.header("📂 Cargar Archivo CSV")
-archivo_csv = st.file_uploader("Sube un archivo de datos de operaciones (CSV)", type=["csv"])
-
-if archivo_csv is not None:
-    df = pd.read_csv(archivo_csv)
-    st.success("✅ Archivo cargado correctamente")
-    st.dataframe(df.head())
+def procesar_datos(df):
+    # Convertir columnas de fecha y hora a datetime
+    df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
+    df['actual_inicio_picking'] = pd.to_datetime(df['actual_inicio_picking'], errors='coerce')
+    df['actual_fin_picking'] = pd.to_datetime(df['actual_fin_picking'], errors='coerce')
+    df['items'] = pd.to_numeric(df['items'], errors='coerce')
     
-    if st.button("📄 Generar Reporte PDF"):
-        generar_reporte(df)
-
-# Parámetros adicionales en la barra lateral
-with st.sidebar:
-    with st.expander("⚙️ Configuraciones Generales"):
-        hora_apertura = st.slider("Hora de apertura de tienda", 0, 23, 8)
-        hora_cierre = st.slider("Hora de cierre de tienda", 0, 23, 22)
-        turno_recursos = st.slider("Duración del turno de trabajo (horas)", 4, 12, 8)
-        factor_productivo = st.slider("Factor Productivo (%)", min_value=50, max_value=100, value=85, step=1)
-        dias_pronostico = st.slider("Días de Pronóstico", min_value=1, max_value=31, value=30, step=1)
+    # Filtrar solo las órdenes con estado 'FINISHED'
+    df = df[df['estado'] == 'FINISHED']
     
-    with st.expander("📅 ¿Evento Especial?"):
-        evento_especial = st.checkbox("¿Habrá un evento especial?")
-        if evento_especial:
-            fecha_inicio = st.date_input("Fecha de inicio del evento")
-            fecha_fin = st.date_input("Fecha de fin del evento")
-            impacto_evento = st.slider("Incremento en demanda (%)", min_value=0, max_value=200, value=20, step=1)
+    # Calcular la productividad promedio de los pickers
+    productividad_promedio = df.groupby('picker')['items'].mean().mean()
+    if pd.isna(productividad_promedio):
+        productividad_promedio = 100  # Valor por defecto si no hay datos
     
-    resumen_detallado = st.checkbox("📊 Resumen Detallado (Día por Día)")
+    # Filtrar datos dentro del horario de tienda
+    df['Hora'] = df['actual_inicio_picking'].dt.hour
+    df = df[(df['Hora'] >= hora_apertura) & (df['Hora'] <= hora_cierre)]
+    
+    return df, productividad_promedio
 
 def generar_reporte(df):
     if df is None or df.empty:
@@ -107,4 +95,18 @@ def generar_reporte(df):
     ranking = ranking.sort_values(by='Puntaje', ascending=False)
     st.dataframe(ranking)
 
-st.write("🚀 Listo para generar reportes en la nube con In-Staffing!")
+# Configuración de la Aplicación
+st.title("📊 In-Staffing: Planificación de Recursos")
+st.markdown("---")
+
+# Sección para cargar el archivo CSV
+st.header("📂 Cargar Archivo CSV")
+archivo_csv = st.file_uploader("Sube un archivo de datos de operaciones (CSV)", type=["csv"])
+
+if archivo_csv is not None:
+    df = pd.read_csv(archivo_csv)
+    st.success("✅ Archivo cargado correctamente")
+    st.dataframe(df.head())
+    
+    if st.button("📄 Generar Reporte PDF"):
+        generar_reporte(df)
