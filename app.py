@@ -23,6 +23,31 @@ plt.rcParams['axes.grid'] = True
 plt.rcParams['grid.linestyle'] = '--'
 sns.set_style("whitegrid")
 
+st.title("📊 In-Staffing: Planificación de Recursos")
+st.markdown("---")
+
+# Sección para cargar el archivo CSV
+st.header("📂 Cargar Archivo CSV")
+archivo_csv = st.file_uploader("Sube un archivo de datos de operaciones (CSV)", type=["csv"])
+
+# Parámetros adicionales en la barra lateral
+with st.sidebar:
+    with st.expander("⚙️ Configuraciones Generales"):
+        hora_apertura = st.slider("Hora de apertura de tienda", 0, 23, 8)
+        hora_cierre = st.slider("Hora de cierre de tienda", 0, 23, 22)
+        turno_recursos = st.slider("Duración del turno de trabajo (horas)", 4, 12, 8)
+        factor_productivo = st.slider("Factor Productivo (%)", min_value=50, max_value=100, value=85, step=1)
+        dias_pronostico = st.slider("Días de Pronóstico", min_value=1, max_value=31, value=30, step=1)
+    
+    with st.expander("📅 ¿Evento Especial?"):
+        evento_especial = st.checkbox("¿Habrá un evento especial?")
+        if evento_especial:
+            fecha_inicio = st.date_input("Fecha de inicio del evento")
+            fecha_fin = st.date_input("Fecha de fin del evento")
+            impacto_evento = st.slider("Incremento en demanda (%)", min_value=0, max_value=200, value=20, step=1)
+    
+    resumen_detallado = st.checkbox("📊 Resumen Detallado (Día por Día)")
+
 def procesar_datos(df):
     # Convertir columnas de fecha y hora a datetime
     df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
@@ -81,28 +106,6 @@ def generar_reporte(df):
         resumen_tabla = df.groupby(['Dia', 'Hora'])['FTEs'].sum().unstack().tail(dias_pronostico)
         st.dataframe(resumen_tabla.style.applymap(lambda x: "background-color: #ffcccc" if x > resumen.median() * 1.5 else ("background-color: #ccffcc" if x < resumen.median() * 0.5 else "")))
     
-    # Tabla de Productividad de Pickers
-    st.header("🏆 Productividad de Pickers")
-    ranking = df.groupby('picker').agg({
-        'items': 'sum',
-        'actual_fin_picking': 'count',
-        'ontime': lambda x: (x == 'on_time').sum()
-    }).rename(columns={'items': 'Total Items', 'actual_fin_picking': 'Órdenes Procesadas', 'ontime': 'Órdenes On_Time'})
-    ranking['Velocidad Promedio (Items/h)'] = ranking['Total Items'] / ranking['Órdenes Procesadas']
-    ranking['% Órdenes On_Time'] = (ranking['Órdenes On_Time'] / ranking['Órdenes Procesadas']) * 100
-    ranking['Puntaje'] = ranking[['Total Items', 'Velocidad Promedio (Items/h)', '% Órdenes On_Time']].mean(axis=1)
-    ranking.fillna(1, inplace=True)  # Reemplazar valores None por 1
-    ranking = ranking.sort_values(by='Puntaje', ascending=False)
-    st.dataframe(ranking)
-
-# Configuración de la Aplicación
-st.title("📊 In-Staffing: Planificación de Recursos")
-st.markdown("---")
-
-# Sección para cargar el archivo CSV
-st.header("📂 Cargar Archivo CSV")
-archivo_csv = st.file_uploader("Sube un archivo de datos de operaciones (CSV)", type=["csv"])
-
 if archivo_csv is not None:
     df = pd.read_csv(archivo_csv)
     st.success("✅ Archivo cargado correctamente")
@@ -110,3 +113,5 @@ if archivo_csv is not None:
     
     if st.button("📄 Generar Reporte PDF"):
         generar_reporte(df)
+
+st.write("🚀 Listo para generar reportes en la nube con Instaleap!")
