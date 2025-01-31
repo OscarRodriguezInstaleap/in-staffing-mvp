@@ -106,6 +106,20 @@ def generar_reporte(df):
         resumen_tabla = df.groupby(['Dia', 'Hora'])['FTEs'].sum().unstack().tail(dias_pronostico)
         st.dataframe(resumen_tabla.style.applymap(lambda x: "background-color: #ffcccc" if x > resumen.median() * 1.5 else ("background-color: #ccffcc" if x < resumen.median() * 0.5 else "")))
     
+    # Tabla de Productividad de Pickers
+    st.header("🏆 Productividad de Pickers")
+    ranking = df.groupby('picker').agg({
+        'items': 'sum',
+        'actual_fin_picking': 'count',
+        'ontime': lambda x: (x == 'on_time').sum()
+    }).rename(columns={'items': 'Total Items', 'actual_fin_picking': 'Órdenes Procesadas', 'ontime': 'Órdenes On_Time'})
+    ranking['Velocidad Promedio (Items/h)'] = ranking['Total Items'] / ranking['Órdenes Procesadas']
+    ranking['% Órdenes On_Time'] = (ranking['Órdenes On_Time'] / ranking['Órdenes Procesadas']) * 100
+    ranking['Puntaje'] = ranking[['Total Items', 'Velocidad Promedio (Items/h)', '% Órdenes On_Time']].mean(axis=1) * 100
+    ranking.fillna(1, inplace=True)  # Reemplazar valores None por 1
+    ranking = ranking.sort_values(by='Puntaje', ascending=False)
+    st.dataframe(ranking)
+
 if archivo_csv is not None:
     df = pd.read_csv(archivo_csv)
     st.success("✅ Archivo cargado correctamente")
@@ -113,5 +127,4 @@ if archivo_csv is not None:
     
     if st.button("📄 Generar Reporte PDF"):
         generar_reporte(df)
-
 st.write("🚀 Listo para generar reportes en la nube con Instaleap!")
