@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
 import os
-from datetime import datetime
+import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
@@ -22,6 +23,11 @@ archivo_csv = st.file_uploader("Sube un archivo de datos de operaciones (CSV)", 
 # Parámetros adicionales en la barra lateral
 st.sidebar.header("⚙️ Configuración de Parámetros")
 
+# Horario de tienda
+hora_apertura = st.sidebar.slider("Hora de apertura de tienda", 0, 23, 8)
+hora_cierre = st.sidebar.slider("Hora de cierre de tienda", 0, 23, 22)
+turno_recursos = st.sidebar.slider("Duración del turno de trabajo (horas)", 4, 12, 8)
+
 # Factor de fatiga (cómo afecta el rendimiento de los empleados)
 factor_fatiga = st.sidebar.slider("Factor de Fatiga (%)", min_value=50, max_value=100, value=85, step=1)
 
@@ -32,30 +38,48 @@ if evento_especial:
     fecha_fin = st.sidebar.date_input("Fecha de fin del evento")
     impacto_evento = st.sidebar.slider("Incremento en demanda (%)", min_value=0, max_value=100, value=20, step=1)
 
-def generar_reporte(df, factor_fatiga, evento_especial, impacto_evento):
-    if df is None:
+def procesar_datos(df):
+    # Convertir columnas de fecha y hora a datetime
+    df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
+    df['actual_inicio_picking'] = pd.to_datetime(df['actual_inicio_picking'], errors='coerce')
+    df['actual_fin_picking'] = pd.to_datetime(df['actual_fin_picking'], errors='coerce')
+    df['items'] = pd.to_numeric(df['items'], errors='coerce')
+    
+    # Filtrar datos dentro del horario de tienda
+    df['Hora'] = df['actual_inicio_picking'].dt.hour
+    df = df[(df['Hora'] >= hora_apertura) & (df['Hora'] <= hora_cierre)]
+    
+    return df
+
+def generar_reporte(df):
+    if df is None or df.empty:
         st.error("No hay datos para generar el reporte.")
         return
     
-    try:
-        # Convertir la columna relevante a numérico y omitir valores no numéricos
-        df.iloc[:, 1] = pd.to_numeric(df.iloc[:, 1], errors="coerce")
-        df = df.dropna(subset=[df.columns[1]])  # Eliminar filas con valores no numéricos en la columna relevante
-
-        # Aplicar factor de fatiga y eventos especiales en el cálculo
-        ajuste_fatiga = factor_fatiga / 100
-        ajuste_evento = (1 + impacto_evento / 100) if evento_especial else 1
-        
-        df['Recursos Necesarios'] = (df.iloc[:, 1] / 19) * ajuste_fatiga * ajuste_evento
+    df = procesar_datos(df)
     
-    except Exception as e:
-        st.error(f"❌ Error en el cálculo del pronóstico: {e}")
-        return
-
+    # Calcular FTEs por hora
+    df['FTEs'] = (df['items'] / 19) * (factor_fatiga / 100)
+    if evento_especial:
+        df['FTEs'] *= (1 + impacto_evento / 100)
+    
+    # Agrupar datos por hora y día
+    df['Dia'] = df['Fecha'].dt.date
+    resumen = df.groupby(['Dia', 'Hora'])['FTEs'].sum().unstack()
+    
+    # Generar gráficos
+    st.header("📈 Pronóstico de Recursos para los Próximos 30 Días")
+    fig, ax = plt.subplots(figsize=(12, 6))
+    for dia in resumen.index[-30:]:
+        ax.plot(resumen.columns, resumen.loc[dia], label=dia.strftime('%Y-%m-%d'))
+    ax.set_xlabel("Hora del Día")
+    ax.set_ylabel("FTEs Necesarios")
+    ax.legend()
+    st.pyplot(fig)
+    
     # Generación del Reporte en PDF
     report_name = f"reporte_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
     report_path = os.path.join(REPORTS_DIR, report_name)
-
     try:
         c = canvas.Canvas(report_path, pagesize=letter)
         c.drawString(100, 750, "Reporte de Planificación de Recursos")
@@ -63,6 +87,16 @@ def generar_reporte(df, factor_fatiga, evento_especial, impacto_evento):
         c.drawString(100, 710, f"Factor de Fatiga: {factor_fatiga}%")
         if evento_especial:
             c.drawString(100, 690, f"Evento Especial: {fecha_inicio} - {fecha_fin} (+{impacto_evento}%)")
+        c.drawString(100, 670, "Resumen de Productividad:")
+        
+        y_position = 650
+        productividad = df.groupby('picker')['items'].sum().reset_index()
+        for index, row in productividad.iterrows():
+            c.drawString(100, y_position, f"{row['picker']}: {row['items']} ítems recogidos")
+            y_position -= 20
+            if y_position < 100:
+                break
+        
         c.save()
         st.success(f"✅ Reporte generado: {report_name}")
         with open(report_path, "rb") as f:
@@ -77,6 +111,6 @@ if archivo_csv is not None:
     st.dataframe(df.head())
 
     if st.button("📄 Generar Reporte PDF"):
-        generar_reporte(df, factor_fatiga, evento_especial, impacto_evento)
+        generar_reporte(df)
 
 st.write("🚀 Listo para generar reportes en la nube con Streamlit!")
