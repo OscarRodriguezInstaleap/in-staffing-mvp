@@ -56,7 +56,7 @@ def procesar_datos(df):
     # Calcular la productividad promedio de los pickers
     productividad_promedio = df.groupby('picker')['items'].mean().mean()
     if pd.isna(productividad_promedio):
-        productividad_promedio = 100  # Valor por defecto si no hay datos
+        productividad_promedio = 200  # Valor por defecto si no hay datos
     
     # Filtrar datos dentro del horario de tienda
     df['Hora'] = df['actual_inicio_picking'].dt.hour
