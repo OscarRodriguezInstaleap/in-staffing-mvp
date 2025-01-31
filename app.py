@@ -32,6 +32,7 @@ with st.sidebar:
         hora_apertura = st.slider("Hora de apertura de tienda", 0, 23, 8)
         hora_cierre = st.slider("Hora de cierre de tienda", 0, 23, 22)
         turno_recursos = st.slider("Duración del turno de trabajo (horas)", 4, 12, 8)
+        factor_productivo = st.slider("Factor Productivo (%)", min_value=50, max_value=100, value=85, step=1)
     
     with st.expander("📅 ¿Evento Especial?"):
         evento_especial = st.checkbox("¿Habrá un evento especial?")
@@ -71,7 +72,7 @@ def generar_reporte(df):
     df, productividad_promedio = procesar_datos(df)
     
     # Calcular FTEs por hora basado en la productividad real de la tienda
-    df['FTEs'] = (df['items'] / productividad_promedio)
+    df['FTEs'] = (df['items'] / productividad_promedio) * (factor_productivo / 100)
     if evento_especial:
         df['FTEs'] *= (1 + impacto_evento / 100)
     
@@ -92,21 +93,19 @@ def generar_reporte(df):
     ax.set_title("Recursos Medianos Necesarios por Hora")
     st.pyplot(fig)
     
-    # Generar ranking de productividad
-    st.header("🏆 Ranking de Productividad de Pickers")
-    ranking = df.groupby('picker').agg({
-        'items': 'sum',
-        'actual_fin_picking': 'count',
-        'ontime': lambda x: (x == 'on_time').sum()
-    }).rename(columns={'items': 'Total Items', 'actual_fin_picking': 'Órdenes Procesadas', 'ontime': 'Órdenes On_Time'})
-    ranking['Velocidad Promedio (Items/h)'] = ranking['Total Items'] / ranking['Órdenes Procesadas']
-    ranking.fillna(1, inplace=True)  # Reemplazar valores None por 1
-    st.dataframe(ranking.nlargest(10, 'Total Items'))
-    
-    # Generar tabla de pronóstico semaforizado
-    st.header("📋 Pronóstico de Recursos por Día y Hora (Semaforizado)")
-    resumen_tabla = df.groupby(['Dia', 'Hora'])['FTEs'].sum().unstack().tail(30)
-    st.dataframe(resumen_tabla.style.applymap(lambda x: "background-color: #ffcccc" if x > resumen.median() * 1.5 else ("background-color: #ccffcc" if x < resumen.median() * 0.5 else "")))
+    # Generar gráficos día por día si la opción está activada
+    if resumen_detallado:
+        st.header("📊 Recursos Necesarios por Día")
+        cols = st.columns(5)  # Mostrar 5 gráficos por fila
+        dias_unicos = df['Dia'].unique()[-30:]
+        for idx, dia in enumerate(dias_unicos):
+            dia_resumen = df[df['Dia'] == dia].groupby('Hora')['FTEs'].median()
+            fig, ax = plt.subplots(figsize=(4, 3))
+            sns.barplot(x=dia_resumen.index, y=dia_resumen.values, ax=ax, color="#1e9d51")
+            ax.set_title(f"{dia}")
+            ax.set_xlabel("Hora")
+            ax.set_ylabel("FTEs")
+            cols[idx % 5].pyplot(fig)
     
     # Generación del Reporte en PDF
     report_name = f"reporte_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
@@ -115,7 +114,8 @@ def generar_reporte(df):
         c = canvas.Canvas(report_path, pagesize=letter)
         c.drawString(100, 750, "Reporte de Planificación de Recursos")
         c.drawString(100, 730, f"Fecha de generación: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        c.drawString(100, 710, f"Productividad promedio: {round(productividad_promedio, 2)} items/hora")
+        c.drawString(100, 710, f"Factor Productivo: {factor_productivo}%")
+        c.drawString(100, 690, f"Productividad promedio: {round(productividad_promedio, 2)} items/hora")
         c.save()
         st.success(f"✅ Reporte generado: {report_name}")
         with open(report_path, "rb") as f:
