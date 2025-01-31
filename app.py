@@ -38,12 +38,9 @@ def generar_reporte(df, factor_fatiga, evento_especial, impacto_evento):
         return
     
     try:
-        # Convertir la columna relevante a numérico
+        # Convertir la columna relevante a numérico y omitir valores no numéricos
         df.iloc[:, 1] = pd.to_numeric(df.iloc[:, 1], errors="coerce")
-        
-        if df.iloc[:, 1].isna().sum() > 0:
-            st.error("❌ Hay valores no numéricos en la columna de datos. Verifica el archivo CSV.")
-            return
+        df = df.dropna(subset=[df.columns[1]])  # Eliminar filas con valores no numéricos en la columna relevante
 
         # Aplicar factor de fatiga y eventos especiales en el cálculo
         ajuste_fatiga = factor_fatiga / 100
