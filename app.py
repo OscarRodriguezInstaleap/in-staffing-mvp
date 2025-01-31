@@ -15,8 +15,12 @@ st.set_page_config(page_title="In-Staffing MVP", layout="wide")
 REPORTS_DIR = "reports"
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
-# Estilos gráficos
+# Estilos gráficos mejorados
 plt.rcParams['font.family'] = 'Montserrat'
+plt.rcParams['axes.spines.top'] = False
+plt.rcParams['axes.spines.right'] = False
+plt.rcParams['axes.grid'] = True
+plt.rcParams['grid.linestyle'] = '--'
 sns.set_style("whitegrid")
 
 st.title("📊 In-Staffing: Planificación de Recursos")
@@ -71,8 +75,8 @@ def generar_reporte(df):
     
     df, productividad_promedio = procesar_datos(df)
     
-    # Calcular FTEs por hora basado en la productividad real de la tienda
-    df['FTEs'] = (df['items'] / productividad_promedio) * (factor_productivo / 100)
+    # Corregir lógica de Factor Productivo
+    df['FTEs'] = (df['items'] / productividad_promedio) / (factor_productivo / 100)
     if evento_especial:
         df['FTEs'] *= (1 + impacto_evento / 100)
     
@@ -84,13 +88,13 @@ def generar_reporte(df):
     df['Dia'] = df['Fecha'].dt.date
     resumen = df.groupby('Hora')['FTEs'].median()
     
-    # Graficar los FTEs medianos por hora
+    # Graficar los FTEs medianos por hora con estilo mejorado
     st.header("📊 Pronóstico Mediano de Recursos por Hora")
     fig, ax = plt.subplots(figsize=(10, 5))
     sns.barplot(x=resumen.index, y=resumen.values, ax=ax, color="#c7e59f", label="Recursos Necesarios")
-    ax.set_xlabel("Hora del Día")
-    ax.set_ylabel("FTEs Necesarios")
-    ax.set_title("Recursos Medianos Necesarios por Hora")
+    ax.set_xlabel("Hora del Día", fontsize=12)
+    ax.set_ylabel("FTEs Necesarios", fontsize=12)
+    ax.set_title("Recursos Medianos Necesarios por Hora", fontsize=14, fontweight='bold')
     st.pyplot(fig)
     
     # Generar gráficos día por día si la opción está activada
@@ -102,9 +106,9 @@ def generar_reporte(df):
             dia_resumen = df[df['Dia'] == dia].groupby('Hora')['FTEs'].median()
             fig, ax = plt.subplots(figsize=(4, 3))
             sns.barplot(x=dia_resumen.index, y=dia_resumen.values, ax=ax, color="#1e9d51")
-            ax.set_title(f"{dia}")
-            ax.set_xlabel("Hora")
-            ax.set_ylabel("FTEs")
+            ax.set_title(f"{dia}", fontsize=10)
+            ax.set_xlabel("Hora", fontsize=8)
+            ax.set_ylabel("FTEs", fontsize=8)
             cols[idx % 5].pyplot(fig)
     
     # Generación del Reporte en PDF
@@ -132,4 +136,4 @@ if archivo_csv is not None:
     if st.button("📄 Generar Reporte PDF"):
         generar_reporte(df)
 
-st.write("🚀 Listo para generar reportes en la nube con Streamlit!")
+st.write("🚀 Listo para generar reportes en la nube con In-staffing!")
