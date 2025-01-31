@@ -45,27 +45,38 @@ def procesar_datos(df):
     df['actual_fin_picking'] = pd.to_datetime(df['actual_fin_picking'], errors='coerce')
     df['items'] = pd.to_numeric(df['items'], errors='coerce')
     
+    # Filtrar solo las órdenes con estado 'FINISHED'
+    df = df[df['estado'] == 'FINISHED']
+    
+    # Calcular la productividad promedio de los pickers
+    productividad_promedio = df.groupby('picker')['items'].mean().mean()
+    if pd.isna(productividad_promedio):
+        productividad_promedio = 100  # Valor por defecto si no hay datos
+    
     # Filtrar datos dentro del horario de tienda
     df['Hora'] = df['actual_inicio_picking'].dt.hour
     df = df[(df['Hora'] >= hora_apertura) & (df['Hora'] <= hora_cierre)]
     
-    return df
+    return df, productividad_promedio
 
 def generar_reporte(df):
     if df is None or df.empty:
         st.error("No hay datos para generar el reporte.")
         return
     
-    df = procesar_datos(df)
+    df, productividad_promedio = procesar_datos(df)
     
-    # Calcular FTEs por hora
-    df['FTEs'] = (df['items'] / 19) * (factor_fatiga / 100)
+    # Calcular FTEs por hora basado en la productividad real de la tienda
+    df['FTEs'] = (df['items'] / productividad_promedio) * (factor_fatiga / 100)
     if evento_especial:
         df['FTEs'] *= (1 + impacto_evento / 100)
     
     # Agrupar datos por día y hora
     df['Dia'] = df['Fecha'].dt.date
     resumen = df.groupby(['Dia', 'Hora'])['FTEs'].sum().unstack()
+    
+    # Rellenar valores nulos con la hora inmediatamente anterior
+    resumen = resumen.fillna(method='ffill', axis=1)
     
     # Generar gráficos individuales por día
     st.header("📈 Pronóstico de Recursos para los Próximos 30 Días")
@@ -91,9 +102,9 @@ def generar_reporte(df):
         c.drawString(100, 750, "Reporte de Planificación de Recursos")
         c.drawString(100, 730, f"Fecha de generación: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         c.drawString(100, 710, f"Factor de Fatiga: {factor_fatiga}%")
+        c.drawString(100, 690, f"Productividad promedio: {round(productividad_promedio, 2)} items/hora")
         if evento_especial:
-            c.drawString(100, 690, f"Evento Especial: {fecha_inicio} - {fecha_fin} (+{impacto_evento}%)")
-        c.drawString(100, 670, "Resumen de Recursos por Hora:")
+            c.drawString(100, 670, f"Evento Especial: {fecha_inicio} - {fecha_fin} (+{impacto_evento}%)")
         
         y_position = 650
         for dia, row in resumen.iterrows():
