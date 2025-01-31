@@ -30,6 +30,14 @@ st.markdown("---")
 st.header("📂 Cargar Archivo CSV")
 archivo_csv = st.file_uploader("Sube un archivo de datos de operaciones (CSV)", type=["csv"])
 
+if archivo_csv is not None:
+    df = pd.read_csv(archivo_csv)
+    st.success("✅ Archivo cargado correctamente")
+    st.dataframe(df.head())
+    
+    if st.button("📄 Generar Reporte PDF"):
+        generar_reporte(df)
+
 # Parámetros adicionales en la barra lateral
 with st.sidebar:
     with st.expander("⚙️ Configuraciones Generales"):
@@ -47,27 +55,6 @@ with st.sidebar:
             impacto_evento = st.slider("Incremento en demanda (%)", min_value=0, max_value=200, value=20, step=1)
     
     resumen_detallado = st.checkbox("📊 Resumen Detallado (Día por Día)")
-
-def procesar_datos(df):
-    # Convertir columnas de fecha y hora a datetime
-    df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
-    df['actual_inicio_picking'] = pd.to_datetime(df['actual_inicio_picking'], errors='coerce')
-    df['actual_fin_picking'] = pd.to_datetime(df['actual_fin_picking'], errors='coerce')
-    df['items'] = pd.to_numeric(df['items'], errors='coerce')
-    
-    # Filtrar solo las órdenes con estado 'FINISHED'
-    df = df[df['estado'] == 'FINISHED']
-    
-    # Calcular la productividad promedio de los pickers
-    productividad_promedio = df.groupby('picker')['items'].mean().mean()
-    if pd.isna(productividad_promedio):
-        productividad_promedio = 100  # Valor por defecto si no hay datos
-    
-    # Filtrar datos dentro del horario de tienda
-    df['Hora'] = df['actual_inicio_picking'].dt.hour
-    df = df[(df['Hora'] >= hora_apertura) & (df['Hora'] <= hora_cierre)]
-    
-    return df, productividad_promedio
 
 def generar_reporte(df):
     if df is None or df.empty:
@@ -120,4 +107,4 @@ def generar_reporte(df):
     ranking = ranking.sort_values(by='Puntaje', ascending=False)
     st.dataframe(ranking)
 
-st.write("🚀 Listo para generar reportes en la nube con Streamlit!")
+st.write("🚀 Listo para generar reportes en la nube con In-Staffing!")
