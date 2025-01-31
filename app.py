@@ -33,8 +33,8 @@ hora_apertura = st.sidebar.slider("Hora de apertura de tienda", 0, 23, 8)
 hora_cierre = st.sidebar.slider("Hora de cierre de tienda", 0, 23, 22)
 turno_recursos = st.sidebar.slider("Duración del turno de trabajo (horas)", 4, 12, 8)
 
-# Factor de fatiga (cómo afecta el rendimiento de los empleados)
-factor_fatiga = st.sidebar.slider("Factor de Fatiga (%)", min_value=50, max_value=100, value=85, step=1)
+# Factor productivo (antes llamado Factor de Fatiga)
+factor_productivo = st.sidebar.slider("Factor Productivo (%)", min_value=50, max_value=100, value=85, step=1)
 
 # Evento especial
 evento_especial = st.sidebar.checkbox("¿Habrá un evento especial?")
@@ -64,42 +64,51 @@ def procesar_datos(df):
     
     return df, productividad_promedio
 
+def generar_scorecard(df):
+    # Crear scorecard basado en items recolectados, velocidad y cumplimiento de tiempos óptimos
+    df['tiempo_picking'] = (df['actual_fin_picking'] - df['actual_inicio_picking']).dt.total_seconds() / 60
+    df['cumplimiento_tiempo'] = (df['actual_fin_picking'] <= df['optimo_fin_picking']).astype(int)
+    df['puntaje'] = df['items'] * 0.5 + (1 / df['tiempo_picking']) * 0.3 + df['cumplimiento_tiempo'] * 0.2
+    ranking = df.groupby('picker')['puntaje'].mean().sort_values(ascending=False)
+    st.header("🏆 Scorecard de Productividad de Pickers")
+    st.dataframe(ranking)
+    return ranking
+
 def generar_reporte(df):
     if df is None or df.empty:
         st.error("No hay datos para generar el reporte.")
         return
     
     df, productividad_promedio = procesar_datos(df)
+    ranking = generar_scorecard(df)
     
     # Calcular FTEs por hora basado en la productividad real de la tienda
-    df['FTEs'] = (df['items'] / productividad_promedio) * (factor_fatiga / 100)
+    df['FTEs'] = (df['items'] / productividad_promedio) * (factor_productivo / 100)
     if evento_especial:
         df['FTEs'] *= (1 + impacto_evento / 100)
+    
+    # Calcular máximos recursos involucrados históricamente
+    max_recursos_historicos = df.groupby('Hora')['picker'].nunique()
     
     # Agrupar datos por hora para el promedio general
     df['Dia'] = df['Fecha'].dt.date
     resumen = df.groupby('Hora')['FTEs'].mean()
     
-    # Graficar los FTEs promedio por hora
+    # Graficar los FTEs promedio por hora con límite de recursos históricos
     st.header("📊 Pronóstico Promedio de Recursos por Hora")
     fig, ax = plt.subplots(figsize=(10, 5))
-    sns.barplot(x=resumen.index, y=resumen.values, ax=ax, palette=["#c7e59f", "#1e9d51"])
+    sns.barplot(x=resumen.index, y=resumen.values, ax=ax, color="#c7e59f", label="Recursos Necesarios")
+    ax.bar(resumen.index, max_recursos_historicos, color="#a7baf0", alpha=0.5, label="Máximo Histórico")
     ax.set_xlabel("Hora del Día")
     ax.set_ylabel("FTEs Necesarios")
     ax.set_title("Recursos Promedio Necesarios por Hora")
-    for p in ax.patches:
-        ax.annotate(f'{p.get_height():.2f}', (p.get_x() + p.get_width() / 2., p.get_height()), ha='center', va='bottom')
+    ax.legend()
     st.pyplot(fig)
     
-    # Mostrar resumen en tabla con semáforo de datos extremos
-    st.header("📋 Resumen de FTEs por Hora (Últimos 30 Días)")
-    resumen_tabla = df.groupby(['Dia', 'Hora'])['FTEs'].sum().unstack().tail(30)
-    st.dataframe(resumen_tabla.style.applymap(lambda x: "background-color: #ffcccc" if x > resumen.mean() * 1.5 else ("background-color: #ccffcc" if x < resumen.mean() * 0.5 else "")))
-    
-    # Generar tabla de ranking de productividad de pickers
-    st.header("🏆 Ranking de Productividad de Pickers")
-    ranking = df.groupby('picker')['items'].sum().sort_values(ascending=False)
-    st.dataframe(ranking)
+    # Generar sugerencia de mayas de trabajo
+    sugerencias = df.groupby(['Dia', 'Hora'])['picker'].apply(lambda x: x.mode()).tail(30)
+    st.header("📅 Sugerencia de Mayas de Trabajo para los Próximos 30 Días")
+    st.dataframe(sugerencias)
     
     # Generación del Reporte en PDF
     report_name = f"reporte_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
@@ -108,11 +117,8 @@ def generar_reporte(df):
         c = canvas.Canvas(report_path, pagesize=letter)
         c.drawString(100, 750, "Reporte de Planificación de Recursos")
         c.drawString(100, 730, f"Fecha de generación: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        c.drawString(100, 710, f"Factor de Fatiga: {factor_fatiga}%")
+        c.drawString(100, 710, f"Factor Productivo: {factor_productivo}%")
         c.drawString(100, 690, f"Productividad promedio: {round(productividad_promedio, 2)} items/hora")
-        if evento_especial:
-            c.drawString(100, 670, f"Evento Especial: {fecha_inicio} - {fecha_fin} (+{impacto_evento}%)")
-        
         c.save()
         st.success(f"✅ Reporte generado: {report_name}")
         with open(report_path, "rb") as f:
