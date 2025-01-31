@@ -64,51 +64,48 @@ def procesar_datos(df):
     
     return df, productividad_promedio
 
-def generar_scorecard(df):
-    # Crear scorecard basado en items recolectados, velocidad y cumplimiento de tiempos óptimos
-    df['tiempo_picking'] = (df['actual_fin_picking'] - df['actual_inicio_picking']).dt.total_seconds() / 60
-    df['cumplimiento_tiempo'] = (df['actual_fin_picking'] <= df['optimo_fin_picking']).astype(int)
-    df['puntaje'] = df['items'] * 0.5 + (1 / df['tiempo_picking']) * 0.3 + df['cumplimiento_tiempo'] * 0.2
-    ranking = df.groupby('picker')['puntaje'].mean().sort_values(ascending=False)
-    st.header("🏆 Scorecard de Productividad de Pickers")
-    st.dataframe(ranking)
-    return ranking
-
 def generar_reporte(df):
     if df is None or df.empty:
         st.error("No hay datos para generar el reporte.")
         return
     
     df, productividad_promedio = procesar_datos(df)
-    ranking = generar_scorecard(df)
     
     # Calcular FTEs por hora basado en la productividad real de la tienda
     df['FTEs'] = (df['items'] / productividad_promedio) * (factor_productivo / 100)
     if evento_especial:
         df['FTEs'] *= (1 + impacto_evento / 100)
     
-    # Calcular máximos recursos involucrados históricamente
-    max_recursos_historicos = df.groupby('Hora')['picker'].nunique()
-    
-    # Agrupar datos por hora para el promedio general
+    # Agrupar datos por hora utilizando la mediana en vez del promedio
     df['Dia'] = df['Fecha'].dt.date
-    resumen = df.groupby('Hora')['FTEs'].mean()
+    resumen = df.groupby('Hora')['FTEs'].median()
     
-    # Graficar los FTEs promedio por hora con límite de recursos históricos
-    st.header("📊 Pronóstico Promedio de Recursos por Hora")
+    # Graficar los FTEs medianos por hora
+    st.header("📊 Pronóstico Mediano de Recursos por Hora")
     fig, ax = plt.subplots(figsize=(10, 5))
     sns.barplot(x=resumen.index, y=resumen.values, ax=ax, color="#c7e59f", label="Recursos Necesarios")
-    ax.bar(resumen.index, max_recursos_historicos, color="#a7baf0", alpha=0.5, label="Máximo Histórico")
     ax.set_xlabel("Hora del Día")
     ax.set_ylabel("FTEs Necesarios")
-    ax.set_title("Recursos Promedio Necesarios por Hora")
-    ax.legend()
+    ax.set_title("Recursos Medianos Necesarios por Hora")
     st.pyplot(fig)
     
-    # Generar sugerencia de mayas de trabajo
-    sugerencias = df.groupby(['Dia', 'Hora'])['picker'].apply(lambda x: x.mode()).tail(30)
-    st.header("📅 Sugerencia de Mayas de Trabajo para los Próximos 30 Días")
-    st.dataframe(sugerencias)
+    # Generar ranking de pickers
+    st.header("🏆 Rankings de Productividad de Pickers")
+    top_items = df.groupby('picker')['items'].sum().nlargest(10)
+    top_velocidad = df.groupby('picker')['actual_fin_picking'].count().nlargest(10)
+    top_ontime = df[df['ontime'] == 'on_time'].groupby('picker')['items'].count().nlargest(10)
+    
+    st.subheader("🔝 Top 10 Pickers con Más Items")
+    st.dataframe(top_items)
+    st.subheader("⚡ Top 10 Pickers Más Rápidos")
+    st.dataframe(top_velocidad)
+    st.subheader("⏳ Top 10 Pickers con Más Entregas a Tiempo")
+    st.dataframe(top_ontime)
+    
+    # Crear tabla de pronóstico semaforizado
+    st.header("📋 Pronóstico de Recursos por Día y Hora (Semaforizado)")
+    resumen_tabla = df.groupby(['Dia', 'Hora'])['FTEs'].sum().unstack().tail(30)
+    st.dataframe(resumen_tabla.style.applymap(lambda x: "background-color: #ffcccc" if x > resumen.median() * 1.5 else ("background-color: #ccffcc" if x < resumen.median() * 0.5 else "")))
     
     # Generación del Reporte en PDF
     report_name = f"reporte_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
