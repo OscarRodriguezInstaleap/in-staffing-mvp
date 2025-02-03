@@ -125,6 +125,11 @@ def generar_reporte(df):
 
     recursos_df = pd.DataFrame(recursos_por_dia).T.fillna(1).astype(int)
     recursos_df = limpiar_columnas_y_indices(recursos_df)
+    
+    # Inspección para encontrar valores problemáticos
+    st.write("🔍 Verificación de Recursos por Hora vs Día:")
+    st.write(recursos_df.head(10))
+
     st.dataframe(recursos_df)
 
     # Productividad de Pickers
@@ -140,6 +145,11 @@ def generar_reporte(df):
     ranking['Puntaje'] = (ranking['Total_Items'] * 0.4 + ranking['Velocidad_Promedio_Items_h'] * 0.3 + ranking['Porcentaje_Ordenes_On_Time'] * 0.3).apply(lambda x: min(100, round(x)))
     ranking = ranking.sort_values(by='Puntaje', ascending=False)
     ranking = limpiar_columnas_y_indices(ranking)
+
+    # Inspección para encontrar valores problemáticos en el ranking
+    st.write("🔍 Verificación de Productividad de Pickers:")
+    st.write(ranking.head(10))
+
     st.dataframe(ranking)
 
 if archivo_csv is not None:
