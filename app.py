@@ -86,8 +86,6 @@ def generar_reporte(df):
         for model in demanda_por_slot['operational_model'].unique():
             data = demanda_por_slot[demanda_por_slot['operational_model'] == model]
             ax.plot(data['slot_from'], data['% Demanda'], marker='o', label=model)
-            for idx, row in data.iterrows():
-                ax.text(row['slot_from'], row['% Demanda'] + 0.5, f"{row['% Demanda']:.1f}%", ha='center')
         ax.set_xlabel("Hora del Día")
         ax.set_ylabel("% de Demanda")
         ax.set_title("Distribución Histórica de la Demanda por Modelo Operativo")
