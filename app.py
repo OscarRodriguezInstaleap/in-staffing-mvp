@@ -37,7 +37,6 @@ with st.sidebar:
         hora_cierre = st.slider("Hora de cierre de tienda", 0, 23, 22)
         turno_recursos = st.slider("Duración del turno de trabajo (horas)", 4, 12, 8)
         factor_productivo = st.slider("Factor Productivo (%)", min_value=50, max_value=100, value=85, step=1)
-        dias_pronostico = st.slider("Días de Pronóstico", min_value=1, max_value=31, value=30, step=1)
         productividad_estimada = st.number_input("Productividad Estimada por Hora", min_value=10, max_value=500, value=100, step=10)
 
         # Fechas del pronóstico
@@ -46,6 +45,8 @@ with st.sidebar:
         
         if (fecha_fin_pronostico - fecha_inicio_pronostico).days > 31:
             st.error("El periodo del pronóstico no puede ser mayor a 31 días.")
+        if (fecha_inicio_pronostico - datetime.now().date()).days > 21:
+            st.error("No se pueden crear pronósticos con más de 3 semanas de anticipación.")
 
     with st.expander("📅 ¿Evento Especial?"):
         evento_especial = st.checkbox("¿Habrá un evento especial?")
@@ -71,7 +72,8 @@ def procesar_datos(df):
 
 def generar_reporte(df):
     df = procesar_datos(df)
-    
+    total_dias = df['Fecha'].dt.date.nunique()
+
     # Preferencia Histórica de Demanda
     demanda_por_slot = df.groupby(['slot_from', 'operational_model'])['items'].sum().reset_index()
     demanda_total = demanda_por_slot.groupby('operational_model')['items'].transform('sum')
@@ -84,14 +86,16 @@ def generar_reporte(df):
         for model in demanda_por_slot['operational_model'].unique():
             data = demanda_por_slot[demanda_por_slot['operational_model'] == model]
             ax.plot(data['slot_from'], data['% Demanda'], marker='o', label=model)
+            for idx, row in data.iterrows():
+                ax.text(row['slot_from'], row['% Demanda'] + 0.5, f"{row['% Demanda']:.1f}%", ha='center')
         ax.set_xlabel("Hora del Día")
-        ax.set_ylabel("% Demanda")
-        ax.set_title("Distribución de la Demanda por Modelo Operativo")
+        ax.set_ylabel("% de Demanda")
+        ax.set_title("Distribución Histórica de la Demanda por Modelo Operativo")
         ax.legend()
         st.pyplot(fig)
 
     # Cálculo de FTEs por hora
-    demanda_horaria = df.groupby('Hora')['items'].sum()
+    demanda_horaria = df.groupby('slot_from')['items'].sum() / total_dias
     ftes_horarios = (demanda_horaria.shift(-1).fillna(0) / productividad_estimada).apply(np.ceil).astype(int)
 
     with col2:
@@ -109,8 +113,8 @@ def generar_reporte(df):
     recursos_por_dia = {}
 
     for fecha in fechas_pronostico:
-        fecha_historica = fecha - pd.DateOffset(months=1)
-        demanda_dia_historico = df[df['Fecha'].dt.date == fecha_historica.date()].groupby('Hora')['items'].sum()
+        fechas_historicas = [fecha - pd.DateOffset(months=m) for m in range(1, 4)]
+        demanda_dia_historico = df[df['Fecha'].dt.date.isin([f.date() for f in fechas_historicas])].groupby('slot_from')['items'].mean()
         recursos_dia = (demanda_dia_historico / productividad_estimada).apply(np.ceil).fillna(1).astype(int) + 1
         recursos_por_dia[fecha.date()] = recursos_dia
 
@@ -126,7 +130,7 @@ def generar_reporte(df):
     }).rename(columns={'items': 'Total Items', 'actual_fin_picking': 'Órdenes Procesadas', 'ontime': 'Órdenes On_Time'})
     ranking['Velocidad Promedio (Items/h)'] = ranking['Total Items'] / ranking['Órdenes Procesadas']
     ranking['% Órdenes On_Time'] = (ranking['Órdenes On_Time'] / ranking['Órdenes Procesadas']) * 100
-    ranking['Puntaje'] = ranking[['Total Items', 'Velocidad Promedio (Items/h)', '% Órdenes On_Time']].mean(axis=1)
+    ranking['Puntaje'] = (ranking['Total Items'] * 0.4 + ranking['Velocidad Promedio (Items/h)'] * 0.3 + ranking['% Órdenes On_Time'] * 0.3).apply(lambda x: min(100, round(x)))
     ranking = ranking.sort_values(by='Puntaje', ascending=False)
     st.dataframe(ranking)
 
@@ -138,4 +142,4 @@ if archivo_csv is not None:
     if st.button("📄 Generar Reporte PDF"):
         generar_reporte(df)
 
-st.write("🚀 Listo para generar reportes en la nube con In-Staffing!")
+st.write("🚀 Listo para generar reportes en la nube con Streamlit!")
