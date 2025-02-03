@@ -38,75 +38,86 @@ with st.sidebar:
         turno_recursos = st.slider("Duración del turno de trabajo (horas)", 4, 12, 8)
         factor_productivo = st.slider("Factor Productivo (%)", min_value=50, max_value=100, value=85, step=1)
         dias_pronostico = st.slider("Días de Pronóstico", min_value=1, max_value=31, value=30, step=1)
-    
+        productividad_estimada = st.number_input("Productividad Estimada por Hora", min_value=10, max_value=500, value=100, step=10)
+
+        # Fechas del pronóstico
+        fecha_inicio_pronostico = st.date_input("Fecha de inicio del pronóstico", datetime.now() + timedelta(days=1))
+        fecha_fin_pronostico = st.date_input("Fecha de fin del pronóstico", fecha_inicio_pronostico + timedelta(days=30))
+        
+        if (fecha_fin_pronostico - fecha_inicio_pronostico).days > 31:
+            st.error("El periodo del pronóstico no puede ser mayor a 31 días.")
+
     with st.expander("📅 ¿Evento Especial?"):
         evento_especial = st.checkbox("¿Habrá un evento especial?")
         if evento_especial:
-            fecha_inicio = st.date_input("Fecha de inicio del evento")
-            fecha_fin = st.date_input("Fecha de fin del evento")
+            fecha_inicio_evento = st.date_input("Fecha de inicio del evento")
+            fecha_fin_evento = st.date_input("Fecha de fin del evento")
             impacto_evento = st.slider("Incremento en demanda (%)", min_value=0, max_value=200, value=20, step=1)
     
     resumen_detallado = st.checkbox("📊 Resumen Detallado (Día por Día)")
 
 def procesar_datos(df):
-    # Convertir columnas de fecha y hora a datetime
     df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
     df['actual_inicio_picking'] = pd.to_datetime(df['actual_inicio_picking'], errors='coerce')
     df['actual_fin_picking'] = pd.to_datetime(df['actual_fin_picking'], errors='coerce')
     df['items'] = pd.to_numeric(df['items'], errors='coerce')
+    df['slot_from'] = pd.to_datetime(df['slot_from'], errors='coerce').dt.hour
     
-    # Filtrar solo las órdenes con estado 'FINISHED'
     df = df[df['estado'] == 'FINISHED']
-    
-    # Calcular la productividad promedio de los pickers
-    productividad_promedio = df.groupby('picker')['items'].mean().mean()
-    if pd.isna(productividad_promedio):
-        productividad_promedio = 100  # Valor por defecto si no hay datos
-    
-    # Filtrar datos dentro del horario de tienda
     df['Hora'] = df['actual_inicio_picking'].dt.hour
     df = df[(df['Hora'] >= hora_apertura) & (df['Hora'] <= hora_cierre)]
     
-    return df, productividad_promedio
+    return df
 
 def generar_reporte(df):
-    if df is None or df.empty:
-        st.error("No hay datos para generar el reporte.")
-        return
+    df = procesar_datos(df)
     
-    df, productividad_promedio = procesar_datos(df)
-    
-    # Corregir lógica de Factor Productivo
-    df['FTEs'] = (df['items'] / productividad_promedio) / (factor_productivo / 100)
-    if evento_especial:
-        df['FTEs'] *= (1 + impacto_evento / 100)
-    
-    # Filtrar valores extremos (percentil 80)
-    lower_bound, upper_bound = np.percentile(df['FTEs'].dropna(), [10, 90])
-    df = df[(df['FTEs'] >= lower_bound) & (df['FTEs'] <= upper_bound)]
-    
-    # Agrupar datos por hora usando la mediana
-    df['Dia'] = df['Fecha'].dt.date
-    resumen = df.groupby('Hora')['FTEs'].median()
-    
-    # Crear layout de primera fila con gráfica y tabla semaforizada
-    col1, col2 = st.columns([2, 1])
-    
+    # Preferencia Histórica de Demanda
+    demanda_por_slot = df.groupby(['slot_from', 'operational_model'])['items'].sum().reset_index()
+    demanda_total = demanda_por_slot.groupby('operational_model')['items'].transform('sum')
+    demanda_por_slot['% Demanda'] = (demanda_por_slot['items'] / demanda_total) * 100
+
+    col1, col2 = st.columns(2)
     with col1:
-        st.header("📊 Pronóstico Mediano de Recursos por Hora")
+        st.header("📊 Preferencia Histórica de Demanda")
         fig, ax = plt.subplots(figsize=(10, 5))
-        sns.barplot(x=resumen.index, y=resumen.values, ax=ax, color="#c7e59f", label="Recursos Necesarios")
-        ax.set_xlabel("Hora del Día", fontsize=12)
-        ax.set_ylabel("FTEs Necesarios", fontsize=12)
-        ax.set_title("Recursos Medianos Necesarios por Hora", fontsize=14, fontweight='bold')
+        for model in demanda_por_slot['operational_model'].unique():
+            data = demanda_por_slot[demanda_por_slot['operational_model'] == model]
+            ax.plot(data['slot_from'], data['% Demanda'], marker='o', label=model)
+        ax.set_xlabel("Hora del Día")
+        ax.set_ylabel("% Demanda")
+        ax.set_title("Distribución de la Demanda por Modelo Operativo")
+        ax.legend()
         st.pyplot(fig)
-    
+
+    # Cálculo de FTEs por hora
+    demanda_horaria = df.groupby('Hora')['items'].sum()
+    ftes_horarios = (demanda_horaria.shift(-1).fillna(0) / productividad_estimada).apply(np.ceil).astype(int)
+
     with col2:
-        st.header("📋 Resumen Hora vs Día")
-        resumen_tabla = df.groupby(['Dia', 'Hora'])['FTEs'].sum().unstack().tail(dias_pronostico)
-        st.dataframe(resumen_tabla.style.applymap(lambda x: "background-color: #ffcccc" if x > resumen.median() * 1.5 else ("background-color: #ccffcc" if x < resumen.median() * 0.5 else "")))
-    
-    # Tabla de Productividad de Pickers
+        st.header("📊 Número de Recursos por Hora")
+        fig, ax = plt.subplots(figsize=(10, 5))
+        sns.barplot(x=ftes_horarios.index, y=ftes_horarios.values, ax=ax, color="#c7e59f")
+        ax.set_xlabel("Hora del Día")
+        ax.set_ylabel("Número de Recursos (FTE)")
+        ax.set_title("Recursos Necesarios por Hora")
+        st.pyplot(fig)
+
+    # Cuadro de Recursos por Hora vs Día
+    st.header("📋 Recursos por Hora vs Día")
+    fechas_pronostico = pd.date_range(start=fecha_inicio_pronostico, end=fecha_fin_pronostico)
+    recursos_por_dia = {}
+
+    for fecha in fechas_pronostico:
+        fecha_historica = fecha - pd.DateOffset(months=1)
+        demanda_dia_historico = df[df['Fecha'].dt.date == fecha_historica.date()].groupby('Hora')['items'].sum()
+        recursos_dia = (demanda_dia_historico / productividad_estimada).apply(np.ceil).fillna(1).astype(int) + 1
+        recursos_por_dia[fecha.date()] = recursos_dia
+
+    recursos_df = pd.DataFrame(recursos_por_dia).T.fillna(1).astype(int)
+    st.dataframe(recursos_df)
+
+    # Productividad de Pickers
     st.header("🏆 Productividad de Pickers")
     ranking = df.groupby('picker').agg({
         'items': 'sum',
@@ -115,8 +126,7 @@ def generar_reporte(df):
     }).rename(columns={'items': 'Total Items', 'actual_fin_picking': 'Órdenes Procesadas', 'ontime': 'Órdenes On_Time'})
     ranking['Velocidad Promedio (Items/h)'] = ranking['Total Items'] / ranking['Órdenes Procesadas']
     ranking['% Órdenes On_Time'] = (ranking['Órdenes On_Time'] / ranking['Órdenes Procesadas']) * 100
-    ranking['Puntaje'] = ranking[['Total Items', 'Velocidad Promedio (Items/h)', '% Órdenes On_Time']].mean(axis=1) * 100
-    ranking.fillna(1, inplace=True)  # Reemplazar valores None por 1
+    ranking['Puntaje'] = ranking[['Total Items', 'Velocidad Promedio (Items/h)', '% Órdenes On_Time']].mean(axis=1)
     ranking = ranking.sort_values(by='Puntaje', ascending=False)
     st.dataframe(ranking)
 
@@ -127,4 +137,5 @@ if archivo_csv is not None:
     
     if st.button("📄 Generar Reporte PDF"):
         generar_reporte(df)
-st.write("🚀 Listo para generar reportes en la nube con Instaleap!")
+
+st.write("🚀 Listo para generar reportes en la nube con In-Staffing!")
