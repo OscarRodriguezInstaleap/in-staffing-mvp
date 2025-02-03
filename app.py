@@ -73,8 +73,8 @@ def procesar_datos(df):
     return df
 
 def limpiar_columnas_y_indices(df):
-    df.columns = df.columns.str.replace(r'[^a-zA-Z0-9_]', '', regex=True)
-    df.index = df.index.to_series().astype(str).str.replace(r'[^a-zA-Z0-9_]', '', regex=True)
+    df.columns = df.columns.map(str).str.replace(r'[^a-zA-Z0-9_]', '', regex=True)
+    df.index = df.index.map(str).str.replace(r'[^a-zA-Z0-9_]', '', regex=True)
     return df
 
 def generar_reporte(df):
