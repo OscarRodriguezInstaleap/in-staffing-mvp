@@ -54,8 +54,6 @@ with st.sidebar:
             fecha_inicio_evento = st.date_input("Fecha de inicio del evento")
             fecha_fin_evento = st.date_input("Fecha de fin del evento")
             impacto_evento = st.slider("Incremento en demanda (%)", min_value=0, max_value=200, value=20, step=1)
-    
-    resumen_detallado = st.checkbox("📊 Resumen Detallado (Día por Día)")
 
 def procesar_datos(df):
     df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
@@ -91,30 +89,37 @@ def generar_reporte(df):
     demanda_total = demanda_por_slot.groupby('operational_model')['items'].transform('sum')
     demanda_por_slot['% Demanda'] = (demanda_por_slot['items'] / demanda_total) * 100
 
+    demanda_por_slot = demanda_por_slot[(demanda_por_slot['slot_from'] >= hora_apertura) & (demanda_por_slot['slot_from'] <= hora_cierre)]
+
     col1, col2 = st.columns(2)
     with col1:
         st.header("📊 Preferencia Histórica de Demanda")
-        fig, ax = plt.subplots(figsize=(10, 5))
+        fig, ax = plt.subplots(figsize=(12, 6))
         for model in demanda_por_slot['operational_model'].unique():
             data = demanda_por_slot[demanda_por_slot['operational_model'] == model]
             ax.plot(data['slot_from'], data['% Demanda'], marker='o', label=model)
-        ax.set_xlabel("Hora del Día")
-        ax.set_ylabel("% de Demanda")
-        ax.set_title("Distribución Histórica de la Demanda por Modelo Operativo")
+        ax.set_xlabel("Hora del Día", fontsize=12)
+        ax.set_ylabel("% de Demanda", fontsize=12)
+        ax.set_title("Distribución Histórica de la Demanda por Modelo Operativo", fontsize=14, fontweight='bold')
         ax.legend()
+        plt.xticks(fontsize=10)
+        plt.yticks(fontsize=10)
         st.pyplot(fig)
 
     # Cálculo de FTEs por hora
     demanda_horaria = df.groupby('slot_from')['items'].sum() / total_dias
+    demanda_horaria = demanda_horaria[(demanda_horaria.index >= hora_apertura) & (demanda_horaria.index <= hora_cierre)]
     ftes_horarios = (demanda_horaria.shift(-1).fillna(0) / productividad_estimada).apply(np.ceil).astype(int)
 
     with col2:
         st.header("📊 Número de Recursos por Hora")
-        fig, ax = plt.subplots(figsize=(10, 5))
+        fig, ax = plt.subplots(figsize=(12, 6))
         sns.barplot(x=ftes_horarios.index, y=ftes_horarios.values, ax=ax, color="#c7e59f")
-        ax.set_xlabel("Hora del Día")
-        ax.set_ylabel("Número de Recursos (FTE)")
-        ax.set_title("Recursos Necesarios por Hora")
+        ax.set_xlabel("Hora del Día", fontsize=12)
+        ax.set_ylabel("Número de Recursos (FTE)", fontsize=12)
+        ax.set_title("Recursos Necesarios por Hora", fontsize=14, fontweight='bold')
+        plt.xticks(fontsize=10)
+        plt.yticks(fontsize=10)
         st.pyplot(fig)
 
     # Cuadro de Recursos por Hora vs Día
@@ -125,6 +130,7 @@ def generar_reporte(df):
     for fecha in fechas_pronostico:
         fechas_historicas = [fecha - pd.DateOffset(months=m) for m in range(1, 4)]
         demanda_dia_historico = df[df['Fecha'].dt.date.isin([f.date() for f in fechas_historicas])].groupby('slot_from')['items'].mean()
+        demanda_dia_historico = demanda_dia_historico[(demanda_dia_historico.index >= hora_apertura) & (demanda_dia_historico.index <= hora_cierre)]
         recursos_dia = (demanda_dia_historico / productividad_estimada).apply(np.ceil).fillna(1).astype(int) + 1
         recursos_por_dia[fecha.date()] = recursos_dia
 
@@ -155,4 +161,5 @@ if archivo_csv is not None:
     if st.button("📄 Generar Reporte PDF"):
         generar_reporte(df)
 
-st.write("🚀 Listo para generar reportes en la nube con Streamlit!")
+st.write("🚀 Listo para generar reportes en la nube con In-Staffing!")
+
