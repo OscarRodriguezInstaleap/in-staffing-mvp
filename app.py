@@ -63,13 +63,18 @@ def procesar_datos(df):
     df['actual_fin_picking'] = pd.to_datetime(df['actual_fin_picking'], errors='coerce')
     df['items'] = pd.to_numeric(df['items'], errors='coerce').fillna(0)
     df['slot_from'] = pd.to_datetime(df['slot_from'], errors='coerce').dt.hour
-    df['picker'] = df['picker'].fillna('Sin Asignar')
+    df['picker'] = df['picker'].fillna('Sin_Asignar')
     df['ontime'] = df['ontime'].fillna('unknown')
     
     df = df[df['estado'] == 'FINISHED']
     df['Hora'] = df['actual_inicio_picking'].dt.hour
     df = df[(df['Hora'] >= hora_apertura) & (df['Hora'] <= hora_cierre)]
     
+    return df
+
+def limpiar_columnas_y_indices(df):
+    df.columns = df.columns.str.replace(r'[^a-zA-Z0-9_]', '', regex=True)
+    df.index = df.index.to_series().astype(str).str.replace(r'[^a-zA-Z0-9_]', '', regex=True)
     return df
 
 def generar_reporte(df):
@@ -119,6 +124,7 @@ def generar_reporte(df):
         recursos_por_dia[fecha.date()] = recursos_dia
 
     recursos_df = pd.DataFrame(recursos_por_dia).T.fillna(1).astype(int)
+    recursos_df = limpiar_columnas_y_indices(recursos_df)
     st.dataframe(recursos_df)
 
     # Productividad de Pickers
@@ -127,12 +133,13 @@ def generar_reporte(df):
         'items': 'sum',
         'actual_fin_picking': 'count',
         'ontime': lambda x: (x == 'on_time').sum()
-    }).rename(columns={'items': 'Total Items', 'actual_fin_picking': 'Órdenes Procesadas', 'ontime': 'Órdenes On_Time'})
+    }).rename(columns={'items': 'Total_Items', 'actual_fin_picking': 'Ordenes_Procesadas', 'ontime': 'Ordenes_On_Time'})
 
-    ranking['Velocidad Promedio (Items/h)'] = (ranking['Total Items'] / ranking['Órdenes Procesadas']).fillna(0)
-    ranking['% Órdenes On_Time'] = ((ranking['Órdenes On_Time'] / ranking['Órdenes Procesadas']) * 100).fillna(0)
-    ranking['Puntaje'] = (ranking['Total Items'] * 0.4 + ranking['Velocidad Promedio (Items/h)'] * 0.3 + ranking['% Órdenes On_Time'] * 0.3).apply(lambda x: min(100, round(x)))
+    ranking['Velocidad_Promedio_Items_h'] = (ranking['Total_Items'] / ranking['Ordenes_Procesadas']).fillna(0)
+    ranking['Porcentaje_Ordenes_On_Time'] = ((ranking['Ordenes_On_Time'] / ranking['Ordenes_Procesadas']) * 100).fillna(0)
+    ranking['Puntaje'] = (ranking['Total_Items'] * 0.4 + ranking['Velocidad_Promedio_Items_h'] * 0.3 + ranking['Porcentaje_Ordenes_On_Time'] * 0.3).apply(lambda x: min(100, round(x)))
     ranking = ranking.sort_values(by='Puntaje', ascending=False)
+    ranking = limpiar_columnas_y_indices(ranking)
     st.dataframe(ranking)
 
 if archivo_csv is not None:
