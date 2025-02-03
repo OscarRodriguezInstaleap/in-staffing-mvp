@@ -132,6 +132,12 @@ def generar_reporte(df):
         demanda_dia_historico = df[df['Fecha'].dt.date.isin([f.date() for f in fechas_historicas])].groupby('slot_from')['items'].mean()
         demanda_dia_historico = demanda_dia_historico[(demanda_dia_historico.index >= hora_apertura) & (demanda_dia_historico.index <= hora_cierre)]
         recursos_dia = (demanda_dia_historico / productividad_estimada).apply(np.ceil).fillna(1).astype(int) + 1
+
+        # Aplicar el impacto del evento especial si corresponde
+        if evento_especial and fecha_inicio_evento <= fecha.date() <= fecha_fin_evento:
+            recursos_dia = recursos_dia * (1 + impacto_evento / 100)
+            recursos_dia = recursos_dia.apply(np.ceil).astype(int)
+
         recursos_por_dia[fecha.date()] = recursos_dia
 
     recursos_df = pd.DataFrame(recursos_por_dia).T.fillna(1).astype(int)
@@ -162,4 +168,3 @@ if archivo_csv is not None:
         generar_reporte(df)
 
 st.write("🚀 Listo para generar reportes en la nube con In-Staffing!")
-
