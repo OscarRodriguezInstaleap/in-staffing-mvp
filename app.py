@@ -61,8 +61,10 @@ def procesar_datos(df):
     df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
     df['actual_inicio_picking'] = pd.to_datetime(df['actual_inicio_picking'], errors='coerce')
     df['actual_fin_picking'] = pd.to_datetime(df['actual_fin_picking'], errors='coerce')
-    df['items'] = pd.to_numeric(df['items'], errors='coerce')
+    df['items'] = pd.to_numeric(df['items'], errors='coerce').fillna(0)
     df['slot_from'] = pd.to_datetime(df['slot_from'], errors='coerce').dt.hour
+    df['picker'] = df['picker'].fillna('Sin Asignar')
+    df['ontime'] = df['ontime'].fillna('unknown')
     
     df = df[df['estado'] == 'FINISHED']
     df['Hora'] = df['actual_inicio_picking'].dt.hour
@@ -126,8 +128,9 @@ def generar_reporte(df):
         'actual_fin_picking': 'count',
         'ontime': lambda x: (x == 'on_time').sum()
     }).rename(columns={'items': 'Total Items', 'actual_fin_picking': 'Órdenes Procesadas', 'ontime': 'Órdenes On_Time'})
-    ranking['Velocidad Promedio (Items/h)'] = ranking['Total Items'] / ranking['Órdenes Procesadas']
-    ranking['% Órdenes On_Time'] = (ranking['Órdenes On_Time'] / ranking['Órdenes Procesadas']) * 100
+
+    ranking['Velocidad Promedio (Items/h)'] = (ranking['Total Items'] / ranking['Órdenes Procesadas']).fillna(0)
+    ranking['% Órdenes On_Time'] = ((ranking['Órdenes On_Time'] / ranking['Órdenes Procesadas']) * 100).fillna(0)
     ranking['Puntaje'] = (ranking['Total Items'] * 0.4 + ranking['Velocidad Promedio (Items/h)'] * 0.3 + ranking['% Órdenes On_Time'] * 0.3).apply(lambda x: min(100, round(x)))
     ranking = ranking.sort_values(by='Puntaje', ascending=False)
     st.dataframe(ranking)
