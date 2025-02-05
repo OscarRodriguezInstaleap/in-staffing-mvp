@@ -8,16 +8,10 @@ from datetime import datetime, timedelta
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-# Configuración de la aplicación
-
 st.set_page_config(page_title="In-Staffing MVP", layout="wide")
-
-# Carpeta para almacenar reportes PDF
 
 REPORTS_DIR = "reports"
 os.makedirs(REPORTS_DIR, exist_ok=True)
-
-# Estilos graficos mejorados
 
 plt.rcParams['font.family'] = 'Montserrat'
 plt.rcParams['axes.spines.top'] = False
@@ -26,17 +20,11 @@ plt.rcParams['axes.grid'] = True
 plt.rcParams['grid.linestyle'] = '--'
 sns.set_style("whitegrid")
 
-# Titulo de la aplicacion
-
 st.title("📊 In-Staffing: Planificacion de Recursos")
 st.markdown("---")
 
-# Seccion para cargar el archivo CSV
-
 st.header("📂 Cargar Archivo CSV")
 archivo_csv = st.file_uploader("Sube un archivo de datos de operaciones (CSV)", type=["csv"])
-
-# Parametros adicionales en la barra lateral
 
 with st.sidebar:
 with st.expander("⚙️ Configuraciones Generales"):
@@ -46,7 +34,6 @@ turno_recursos = st.slider("Duracion del turno de trabajo (horas)", 4, 12, 8)
 factor_productivo = st.slider("Factor Productivo (%)", min_value=50, max_value=100, value=85, step=1)
 productividad_estimada = st.number_input("Productividad Estimada por Hora", min_value=10, max_value=500, value=100, step=10)
 
-    # Fechas del pronostico
     fecha_inicio_pronostico = st.date_input("Fecha de inicio del pronostico", datetime.now() + timedelta(days=1))
     fecha_fin_pronostico = st.date_input("Fecha de fin del pronostico", fecha_inicio_pronostico + timedelta(days=30))
     
@@ -61,8 +48,6 @@ with st.expander("📅 ¿Evento Especial?"):
         fecha_inicio_evento = st.date_input("Fecha de inicio del evento")
         fecha_fin_evento = st.date_input("Fecha de fin del evento")
         impacto_evento = st.slider("Incremento en demanda (%)", min_value=0, max_value=200, value=20, step=1)
-
-# Funciones para procesar los datos
 
 def procesar_datos(df):
 columnas_requeridas = ['Fecha', 'estado']
@@ -97,8 +82,6 @@ df = df[df['estado'] == 'FINISHED']
 df = df[(df['Hora'] >= hora_apertura) & (df['Hora'] <= hora_cierre)]
 
 return df
-
-# Funcion para generar el reporte
 
 def generar_reporte(df):
 df = procesar_datos(df)
@@ -158,8 +141,6 @@ if 'picker' in df.columns and 'items' in df.columns:
 else:
     st.warning("No se puede generar el scorecard de productividad porque faltan las columnas 'picker' o 'items'.")
 
-# Ejecucion de la aplicacion
-
 if archivo_csv is not None:
 df = pd.read_csv(archivo_csv)
 st.success("✅ Archivo cargado correctamente")
@@ -169,4 +150,3 @@ if st.button("📄 Generar Reporte PDF"):
     generar_reporte(df)
 
 st.write("🚀 Listo para generar reportes en la nube con In-Staffing!")
-
