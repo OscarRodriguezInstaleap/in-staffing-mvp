@@ -12,12 +12,12 @@ from reportlab.pdfgen import canvas
 
 st.set_page_config(page_title="In-Staffing MVP", layout="wide")
 
-Carpeta para almacenar reportes PDF
+# Carpeta para almacenar reportes PDF
 
 REPORTS_DIR = "reports"
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
-Estilos graficos mejorados
+# Estilos graficos mejorados
 
 plt.rcParams['font.family'] = 'Montserrat'
 plt.rcParams['axes.spines.top'] = False
@@ -26,17 +26,17 @@ plt.rcParams['axes.grid'] = True
 plt.rcParams['grid.linestyle'] = '--'
 sns.set_style("whitegrid")
 
-Titulo de la aplicacion
+# Titulo de la aplicacion
 
 st.title("📊 In-Staffing: Planificacion de Recursos")
 st.markdown("---")
 
-Seccion para cargar el archivo CSV
+# Seccion para cargar el archivo CSV
 
 st.header("📂 Cargar Archivo CSV")
 archivo_csv = st.file_uploader("Sube un archivo de datos de operaciones (CSV)", type=["csv"])
 
-Parametros adicionales en la barra lateral
+# Parametros adicionales en la barra lateral
 
 with st.sidebar:
 with st.expander("⚙️ Configuraciones Generales"):
@@ -62,7 +62,7 @@ with st.expander("📅 ¿Evento Especial?"):
         fecha_fin_evento = st.date_input("Fecha de fin del evento")
         impacto_evento = st.slider("Incremento en demanda (%)", min_value=0, max_value=200, value=20, step=1)
 
-Funciones para procesar los datos
+# Funciones para procesar los datos
 
 def procesar_datos(df):
 columnas_requeridas = ['Fecha', 'estado']
@@ -98,7 +98,7 @@ df = df[(df['Hora'] >= hora_apertura) & (df['Hora'] <= hora_cierre)]
 
 return df
 
-Funcion para generar el reporte
+# Funcion para generar el reporte
 
 def generar_reporte(df):
 df = procesar_datos(df)
@@ -158,7 +158,7 @@ if 'picker' in df.columns and 'items' in df.columns:
 else:
     st.warning("No se puede generar el scorecard de productividad porque faltan las columnas 'picker' o 'items'.")
 
-Ejecucion de la aplicacion
+# Ejecucion de la aplicacion
 
 if archivo_csv is not None:
 df = pd.read_csv(archivo_csv)
