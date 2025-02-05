@@ -49,6 +49,9 @@ with st.expander("📅 ¿Evento Especial?"):
         fecha_fin_evento = st.date_input("Fecha de fin del evento")
         impacto_evento = st.slider("Incremento en demanda (%)", min_value=0, max_value=200, value=20, step=1)
 
+    else:
+        pass  # Se asegura que no haya bloques vacios
+
 def procesar_datos(df):
 columnas_requeridas = ['Fecha', 'estado']
 columnas_opcionales = ['items', 'slot_from', 'picker', 'ontime', 'actual_inicio_picking', 'actual_fin_picking']
