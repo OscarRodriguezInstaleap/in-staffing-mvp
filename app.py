@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-Configuración de la aplicación
+Configuracion de la aplicacion
 
 st.set_page_config(page_title="In-Staffing MVP", layout="wide")
 
@@ -17,7 +17,7 @@ Carpeta para almacenar reportes PDF
 REPORTS_DIR = "reports"
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
-Estilos gráficos mejorados
+Estilos graficos mejorados
 
 plt.rcParams['font.family'] = 'Montserrat'
 plt.rcParams['axes.spines.top'] = False
@@ -26,37 +26,37 @@ plt.rcParams['axes.grid'] = True
 plt.rcParams['grid.linestyle'] = '--'
 sns.set_style("whitegrid")
 
-Título de la aplicación
+Titulo de la aplicacion
 
-st.title("📊 In-Staffing: Planificación de Recursos")
+st.title("📊 In-Staffing: Planificacion de Recursos")
 st.markdown("---")
 
-Sección para cargar el archivo CSV
+Seccion para cargar el archivo CSV
 
 st.header("📂 Cargar Archivo CSV")
 archivo_csv = st.file_uploader("Sube un archivo de datos de operaciones (CSV)", type=["csv"])
 
-Parámetros adicionales en la barra lateral
+Parametros adicionales en la barra lateral
 
 with st.sidebar:
 with st.expander("⚙️ Configuraciones Generales"):
 hora_apertura = st.slider("Hora de apertura de tienda", 0, 23, 8)
 hora_cierre = st.slider("Hora de cierre de tienda", 0, 23, 22)
-turno_recursos = st.slider("Duración del turno de trabajo (horas)", 4, 12, 8)
+turno_recursos = st.slider("Duracion del turno de trabajo (horas)", 4, 12, 8)
 factor_productivo = st.slider("Factor Productivo (%)", min_value=50, max_value=100, value=85, step=1)
 productividad_estimada = st.number_input("Productividad Estimada por Hora", min_value=10, max_value=500, value=100, step=10)
 
-    # Fechas del pronóstico
-    fecha_inicio_pronostico = st.date_input("Fecha de inicio del pronóstico", datetime.now() + timedelta(days=1))
-    fecha_fin_pronostico = st.date_input("Fecha de fin del pronóstico", fecha_inicio_pronostico + timedelta(days=30))
+    # Fechas del pronostico
+    fecha_inicio_pronostico = st.date_input("Fecha de inicio del pronostico", datetime.now() + timedelta(days=1))
+    fecha_fin_pronostico = st.date_input("Fecha de fin del pronostico", fecha_inicio_pronostico + timedelta(days=30))
     
     if (fecha_fin_pronostico - fecha_inicio_pronostico).days > 31:
-        st.error("El periodo del pronóstico no puede ser mayor a 31 días.")
+        st.error("El periodo del pronostico no puede ser mayor a 31 dias.")
     if (fecha_inicio_pronostico - datetime.now().date()).days > 21:
-        st.error("No se pueden crear pronósticos con más de 3 semanas de anticipación.")
+        st.error("No se pueden crear pronosticos con mas de 3 semanas de anticipacion.")
 
 with st.expander("📅 ¿Evento Especial?"):
-    evento_especial = st.checkbox("¿Habrá un evento especial?")
+    evento_especial = st.checkbox("¿Habra un evento especial?")
     if evento_especial:
         fecha_inicio_evento = st.date_input("Fecha de inicio del evento")
         fecha_fin_evento = st.date_input("Fecha de fin del evento")
@@ -70,7 +70,7 @@ columnas_opcionales = ['items', 'slot_from', 'picker', 'ontime', 'actual_inicio_
 
 for col in columnas_requeridas:
     if col not in df.columns:
-        st.error(f"La columna requerida '{col}' no está presente en el archivo. Por favor, verifica el archivo cargado.")
+        st.error(f"La columna requerida '{col}' no esta presente en el archivo. Por favor, verifica el archivo cargado.")
         return None
 
 if 'Fecha' in df.columns:
@@ -98,7 +98,7 @@ df = df[(df['Hora'] >= hora_apertura) & (df['Hora'] <= hora_cierre)]
 
 return df
 
-Función para generar el reporte
+Funcion para generar el reporte
 
 def generar_reporte(df):
 df = procesar_datos(df)
@@ -114,8 +114,8 @@ if 'items' in df.columns and 'slot_from' in df.columns:
     st.header("📊 Recursos Necesarios por Hora")
     fig, ax = plt.subplots(figsize=(12, 6))
     sns.barplot(x=ftes_horarios.index, y=ftes_horarios.values, ax=ax, color="#c7e59f")
-    ax.set_xlabel("Hora del Día")
-    ax.set_ylabel("Número de Recursos (FTE)")
+    ax.set_xlabel("Hora del Dia")
+    ax.set_ylabel("Numero de Recursos (FTE)")
     ax.set_title("Recursos Necesarios por Hora")
     st.pyplot(fig)
 
@@ -133,10 +133,10 @@ if 'items' in df.columns and 'slot_from' in df.columns:
         recursos_por_dia[fecha.date()] = recursos_dia
 
     recursos_df = pd.DataFrame(recursos_por_dia).fillna(1).astype(int)
-    st.header("📋 Recursos por Hora vs Día")
+    st.header("📋 Recursos por Hora vs Dia")
     st.dataframe(recursos_df)
 else:
-    st.warning("No se puede calcular el número de recursos porque faltan las columnas 'items' o 'slot_from'.")
+    st.warning("No se puede calcular el numero de recursos porque faltan las columnas 'items' o 'slot_from'.")
 
 if 'picker' in df.columns and 'items' in df.columns:
     st.header("🏆 Productividad de Pickers")
@@ -158,7 +158,7 @@ if 'picker' in df.columns and 'items' in df.columns:
 else:
     st.warning("No se puede generar el scorecard de productividad porque faltan las columnas 'picker' o 'items'.")
 
-Ejecución de la aplicación
+Ejecucion de la aplicacion
 
 if archivo_csv is not None:
 df = pd.read_csv(archivo_csv)
@@ -169,3 +169,4 @@ if st.button("📄 Generar Reporte PDF"):
     generar_reporte(df)
 
 st.write("🚀 Listo para generar reportes en la nube con In-Staffing!")
+
