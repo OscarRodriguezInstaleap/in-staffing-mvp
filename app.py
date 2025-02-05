@@ -28,19 +28,7 @@ archivo_csv = st.file_uploader("Sube un archivo de datos de operaciones (CSV)", 
 
 with st.sidebar:
 with st.expander("⚙️ Configuraciones Generales"):
-hora_apertura = st.slider("Hora de apertura de tienda", 0, 23, 8)
-hora_cierre = st.slider("Hora de cierre de tienda", 0, 23, 22)
-turno_recursos = st.slider("Duracion del turno de trabajo (horas)", 4, 12, 8)
-factor_productivo = st.slider("Factor Productivo (%)", min_value=50, max_value=100, value=85, step=1)
-productividad_estimada = st.number_input("Productividad Estimada por Hora", min_value=10, max_value=500, value=100, step=10)
-
-    fecha_inicio_pronostico = st.date_input("Fecha de inicio del pronostico", datetime.now() + timedelta(days=1))
-    fecha_fin_pronostico = st.date_input("Fecha de fin del pronostico", fecha_inicio_pronostico + timedelta(days=30))
-    
-    if (fecha_fin_pronostico - fecha_inicio_pronostico).days > 31:
-        st.error("El periodo del pronostico no puede ser mayor a 31 dias.")
-    if (fecha_inicio_pronostico - datetime.now().date()).days > 21:
-        st.error("No se pueden crear pronosticos con mas de 3 semanas de anticipacion.")
+pass  # Asegura que este bloque no esté vacío para evitar errores de indentación
 
 with st.expander("📅 ¿Evento Especial?"):
     evento_especial = st.checkbox("¿Habra un evento especial?")
@@ -48,9 +36,8 @@ with st.expander("📅 ¿Evento Especial?"):
         fecha_inicio_evento = st.date_input("Fecha de inicio del evento")
         fecha_fin_evento = st.date_input("Fecha de fin del evento")
         impacto_evento = st.slider("Incremento en demanda (%)", min_value=0, max_value=200, value=20, step=1)
-
     else:
-        pass  # Se asegura que no haya bloques vacios
+        pass
 
 def procesar_datos(df):
 columnas_requeridas = ['Fecha', 'estado']
@@ -82,7 +69,7 @@ else:
     df['Hora'] = df['Fecha'].dt.hour
 
 df = df[df['estado'] == 'FINISHED']
-df = df[(df['Hora'] >= hora_apertura) & (df['Hora'] <= hora_cierre)]
+df = df[(df['Hora'] >= 8) & (df['Hora'] <= 22)]
 
 return df
 
@@ -95,7 +82,7 @@ total_dias = df['Fecha'].dt.date.nunique()
 
 if 'items' in df.columns and 'slot_from' in df.columns:
     demanda_horaria = df.groupby('slot_from')['items'].sum() / total_dias
-    ftes_horarios = (demanda_horaria / productividad_estimada).apply(np.ceil).astype(int)
+    ftes_horarios = (demanda_horaria / 100).apply(np.ceil).astype(int)
 
     st.header("📊 Recursos Necesarios por Hora")
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -105,12 +92,12 @@ if 'items' in df.columns and 'slot_from' in df.columns:
     ax.set_title("Recursos Necesarios por Hora")
     st.pyplot(fig)
 
-    fechas_pronostico = pd.date_range(start=fecha_inicio_pronostico, end=fecha_fin_pronostico)
+    fechas_pronostico = pd.date_range(start=datetime.now() + timedelta(days=1), periods=7)
     recursos_por_dia = {}
 
     for fecha in fechas_pronostico:
         demanda_dia_historico = df[df['Fecha'].dt.date == fecha.date()].groupby('slot_from')['items'].sum()
-        recursos_dia = (demanda_dia_historico / productividad_estimada).apply(np.ceil).fillna(1).astype(int)
+        recursos_dia = (demanda_dia_historico / 100).apply(np.ceil).fillna(1).astype(int)
 
         if evento_especial and fecha_inicio_evento <= fecha.date() <= fecha_fin_evento:
             recursos_dia *= (1 + impacto_evento / 100)
