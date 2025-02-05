@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-Configuracion de la aplicacion
+# Configuración de la aplicación
 
 st.set_page_config(page_title="In-Staffing MVP", layout="wide")
 
