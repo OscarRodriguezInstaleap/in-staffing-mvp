@@ -28,10 +28,16 @@ archivo_csv = st.file_uploader("Sube un archivo de datos de operaciones (CSV)", 
 
 with st.sidebar:
 with st.expander("⚙️ Configuraciones Generales"):
-pass  # Asegura que este bloque no esté vacío para evitar errores de indentación
+hora_apertura = st.slider("Hora de apertura de tienda", 0, 23, 8)
+hora_cierre = st.slider("Hora de cierre de tienda", 0, 23, 22)
+productividad_estimada = st.number_input("Productividad Estimada por Hora", min_value=10, max_value=500, value=100, step=10)
 
 with st.expander("📅 ¿Evento Especial?"):
-    pass  # Asegura que este bloque no esté vacío para evitar errores de indentación
+    evento_especial = st.checkbox("¿Habra un evento especial?")
+    if evento_especial:
+        fecha_inicio_evento = st.date_input("Fecha de inicio del evento")
+        fecha_fin_evento = st.date_input("Fecha de fin del evento")
+        impacto_evento = st.slider("Incremento en demanda (%)", min_value=0, max_value=200, value=20, step=1)
 
 def procesar_datos(df):
 columnas_requeridas = ['Fecha', 'estado']
@@ -63,7 +69,7 @@ else:
     df['Hora'] = df['Fecha'].dt.hour
 
 df = df[df['estado'] == 'FINISHED']
-df = df[(df['Hora'] >= 8) & (df['Hora'] <= 22)]
+df = df[(df['Hora'] >= hora_apertura) & (df['Hora'] <= hora_cierre)]
 
 return df
 
@@ -76,7 +82,7 @@ total_dias = df['Fecha'].dt.date.nunique()
 
 if 'items' in df.columns and 'slot_from' in df.columns:
     demanda_horaria = df.groupby('slot_from')['items'].sum() / total_dias
-    ftes_horarios = (demanda_horaria / 100).apply(np.ceil).astype(int)
+    ftes_horarios = (demanda_horaria / productividad_estimada).apply(np.ceil).astype(int)
 
     st.header("📊 Recursos Necesarios por Hora")
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -91,7 +97,11 @@ if 'items' in df.columns and 'slot_from' in df.columns:
 
     for fecha in fechas_pronostico:
         demanda_dia_historico = df[df['Fecha'].dt.date == fecha.date()].groupby('slot_from')['items'].sum()
-        recursos_dia = (demanda_dia_historico / 100).apply(np.ceil).fillna(1).astype(int)
+        recursos_dia = (demanda_dia_historico / productividad_estimada).apply(np.ceil).fillna(1).astype(int)
+
+        if evento_especial and fecha_inicio_evento <= fecha.date() <= fecha_fin_evento:
+            recursos_dia *= (1 + impacto_evento / 100)
+            recursos_dia = recursos_dia.apply(np.ceil).astype(int)
 
         recursos_por_dia[fecha.date()] = recursos_dia
 
