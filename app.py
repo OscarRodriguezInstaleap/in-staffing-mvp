@@ -26,6 +26,8 @@ plt.rcParams['axes.grid'] = True
 plt.rcParams['grid.linestyle'] = '--'
 sns.set_style("whitegrid")
 
+Título de la aplicación
+
 st.title("📊 In-Staffing: Planificación de Recursos")
 st.markdown("---")
 
@@ -59,6 +61,8 @@ with st.expander("📅 ¿Evento Especial?"):
         fecha_inicio_evento = st.date_input("Fecha de inicio del evento")
         fecha_fin_evento = st.date_input("Fecha de fin del evento")
         impacto_evento = st.slider("Incremento en demanda (%)", min_value=0, max_value=200, value=20, step=1)
+
+Funciones para procesar los datos
 
 def procesar_datos(df):
 columnas_requeridas = ['Fecha', 'estado']
@@ -94,6 +98,8 @@ df = df[(df['Hora'] >= hora_apertura) & (df['Hora'] <= hora_cierre)]
 
 return df
 
+Función para generar el reporte
+
 def generar_reporte(df):
 df = procesar_datos(df)
 if df is None:
@@ -101,7 +107,6 @@ return
 
 total_dias = df['Fecha'].dt.date.nunique()
 
-# Alineación del cálculo de recursos para la gráfica y la tabla
 if 'items' in df.columns and 'slot_from' in df.columns:
     demanda_horaria = df.groupby('slot_from')['items'].sum() / total_dias
     ftes_horarios = (demanda_horaria / productividad_estimada).apply(np.ceil).astype(int)
@@ -114,7 +119,6 @@ if 'items' in df.columns and 'slot_from' in df.columns:
     ax.set_title("Recursos Necesarios por Hora")
     st.pyplot(fig)
 
-    # Crear tabla de Recursos por Hora vs Día usando la misma lógica de la gráfica
     fechas_pronostico = pd.date_range(start=fecha_inicio_pronostico, end=fecha_fin_pronostico)
     recursos_por_dia = {}
 
@@ -134,7 +138,6 @@ if 'items' in df.columns and 'slot_from' in df.columns:
 else:
     st.warning("No se puede calcular el número de recursos porque faltan las columnas 'items' o 'slot_from'.")
 
-# Scorecard de productividad si 'picker' y 'items' están presentes
 if 'picker' in df.columns and 'items' in df.columns:
     st.header("🏆 Productividad de Pickers")
     ranking = df.groupby('picker').agg({
@@ -154,6 +157,8 @@ if 'picker' in df.columns and 'items' in df.columns:
     st.dataframe(ranking)
 else:
     st.warning("No se puede generar el scorecard de productividad porque faltan las columnas 'picker' o 'items'.")
+
+Ejecución de la aplicación
 
 if archivo_csv is not None:
 df = pd.read_csv(archivo_csv)
