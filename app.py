@@ -31,13 +31,7 @@ with st.expander("⚙️ Configuraciones Generales"):
 pass  # Asegura que este bloque no esté vacío para evitar errores de indentación
 
 with st.expander("📅 ¿Evento Especial?"):
-    evento_especial = st.checkbox("¿Habra un evento especial?")
-    if evento_especial:
-        fecha_inicio_evento = st.date_input("Fecha de inicio del evento")
-        fecha_fin_evento = st.date_input("Fecha de fin del evento")
-        impacto_evento = st.slider("Incremento en demanda (%)", min_value=0, max_value=200, value=20, step=1)
-    else:
-        pass
+    pass  # Asegura que este bloque no esté vacío para evitar errores de indentación
 
 def procesar_datos(df):
 columnas_requeridas = ['Fecha', 'estado']
@@ -98,10 +92,6 @@ if 'items' in df.columns and 'slot_from' in df.columns:
     for fecha in fechas_pronostico:
         demanda_dia_historico = df[df['Fecha'].dt.date == fecha.date()].groupby('slot_from')['items'].sum()
         recursos_dia = (demanda_dia_historico / 100).apply(np.ceil).fillna(1).astype(int)
-
-        if evento_especial and fecha_inicio_evento <= fecha.date() <= fecha_fin_evento:
-            recursos_dia *= (1 + impacto_evento / 100)
-            recursos_dia = recursos_dia.apply(np.ceil).astype(int)
 
         recursos_por_dia[fecha.date()] = recursos_dia
 
