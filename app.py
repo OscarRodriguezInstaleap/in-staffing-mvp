@@ -28,6 +28,13 @@ with st.sidebar:
         hora_cierre = st.slider("Hora de cierre de tienda", 0, 23, 22)
         productividad_estimada = st.number_input("Productividad Estimada por Hora", min_value=10, max_value=500, value=100, step=10)
 
+        # Fechas del pronóstico
+        fecha_inicio_pronostico = st.date_input("Fecha de inicio del pronóstico", datetime.now() + timedelta(days=1))
+        fecha_fin_pronostico = st.date_input("Fecha de fin del pronóstico", fecha_inicio_pronostico + timedelta(days=30))
+        
+        if (fecha_fin_pronostico - fecha_inicio_pronostico).days > 30:
+            st.error("El periodo del pronóstico no puede ser mayor a 30 días.")
+
     with st.expander("📅 ¿Evento Especial?"):
         evento_especial = st.checkbox("¿Habrá un evento especial?")
         fecha_inicio_evento = None
@@ -56,36 +63,57 @@ def generar_reporte(df):
 
     total_dias = df['Fecha'].dt.date.nunique()
 
+    col1, col2 = st.columns(2)
+
     if 'items' in df.columns and 'slot_from' in df.columns:
+        demanda_por_slot = df.groupby(['slot_from', 'operational_model'])['items'].sum().reset_index()
+        chart1 = alt.Chart(demanda_por_slot).mark_line(point=True).encode(
+            x='slot_from:O',
+            y='items:Q',
+            color='operational_model:N',
+            tooltip=['slot_from', 'items', 'operational_model']
+        ).properties(title="📊 Preferencia de Slot por Modelo Operativo")
+        
+        col1.altair_chart(chart1, use_container_width=True)
+
         demanda_horaria = df.groupby('slot_from')['items'].sum() / total_dias
         ftes_horarios = (demanda_horaria / productividad_estimada).apply(np.ceil).astype(int)
-
-        st.header("📊 Recursos Necesarios por Hora")
-        chart = alt.Chart(pd.DataFrame({'Hora': ftes_horarios.index, 'Recursos': ftes_horarios.values}))\
+        
+        chart2 = alt.Chart(pd.DataFrame({'Hora': ftes_horarios.index, 'Recursos': ftes_horarios.values}))\
             .mark_bar(color='#c7e59f')\
-            .encode(x='Hora:O', y='Recursos:Q')\
-            .properties(title="Recursos Necesarios por Hora")
-        st.altair_chart(chart, use_container_width=True)
+            .encode(x='Hora:O', y='Recursos:Q', tooltip=['Hora', 'Recursos'])\
+            .properties(title="📊 Recursos Necesarios por Hora")
+        
+        col2.altair_chart(chart2, use_container_width=True)
 
-        fechas_pronostico = pd.date_range(start=datetime.now() + timedelta(days=1), periods=7)
-        recursos_por_dia = {}
+    st.markdown("---")
 
-        for fecha in fechas_pronostico:
-            demanda_dia_historico = df[df['Fecha'].dt.date == fecha.date()].groupby('slot_from')['items'].sum()
-            recursos_dia = (demanda_dia_historico / productividad_estimada).apply(np.ceil).fillna(1).astype(int)
+    col3, col4 = st.columns(2)
+    fechas_pronostico = pd.date_range(start=fecha_inicio_pronostico, end=fecha_fin_pronostico)
+    recursos_por_dia = {}
 
-            if evento_especial and fecha_inicio_evento and fecha_fin_evento:
-                if fecha_inicio_evento <= fecha.date() <= fecha_fin_evento:
-                    recursos_dia = recursos_dia * (1 + impacto_evento / 100)
-                    recursos_dia = recursos_dia.apply(np.ceil).astype(int)
+    for fecha in fechas_pronostico:
+        demanda_dia_historico = df[df['Fecha'].dt.date == fecha.date()].groupby('slot_from')['items'].sum()
+        recursos_dia = (demanda_dia_historico / productividad_estimada).apply(np.ceil).fillna(1).astype(int)
 
-            recursos_por_dia[fecha.date()] = recursos_dia
+        if evento_especial and fecha_inicio_evento and fecha_fin_evento:
+            if fecha_inicio_evento <= fecha.date() <= fecha_fin_evento:
+                recursos_dia = recursos_dia * (1 + impacto_evento / 100)
+                recursos_dia = recursos_dia.apply(np.ceil).astype(int)
 
-        recursos_df = pd.DataFrame(recursos_por_dia).fillna(1).astype(int)
-        st.header("📋 Recursos por Hora vs Día")
-        st.dataframe(recursos_df)
-    else:
-        st.warning("No se puede calcular el número de recursos porque faltan las columnas 'items' o 'slot_from'.")
+        recursos_por_dia[fecha.date()] = recursos_dia
+
+    recursos_df = pd.DataFrame(recursos_por_dia).fillna(1).astype(int)
+    col3.header("📋 Pronóstico de Recursos por Hora vs Día")
+    col3.dataframe(recursos_df)
+    
+    explicacion = """
+    ### Justificación del Pronóstico de Recursos
+    - Se ha tomado el histórico de demanda para calcular los recursos necesarios por hora.
+    - En caso de evento especial, se ha aplicado un incremento del {}% en las fechas seleccionadas.
+    - Los recursos han sido calculados basándose en una productividad estimada de {} items por hora.
+    """.format(impacto_evento, productividad_estimada)
+    col4.markdown(explicacion)
 
 # Cargar archivo CSV y ejecutar el análisis
 if archivo_csv is not None:
@@ -97,4 +125,3 @@ if archivo_csv is not None:
         generar_reporte(df)
 
 st.write("🚀 Listo para generar reportes en la nube con In-Staffing!")
-
