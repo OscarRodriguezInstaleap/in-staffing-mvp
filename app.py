@@ -46,23 +46,34 @@ with st.sidebar:
             fecha_fin_evento = st.date_input("Fecha de fin del evento")
             impacto_evento = st.slider("Incremento en demanda (%)", min_value=0, max_value=200, value=20, step=1)
 
-# Función para procesar los datos
+    # Agregar filtro de día de la semana
+    dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+    dia_seleccionado = st.selectbox("📅 Selecciona un día de la semana", dias_semana)
+
+# Función para procesar los datos con filtro de día de la semana
 def procesar_datos(df):
     df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
     df['items'] = pd.to_numeric(df['items'], errors='coerce').fillna(0)
     df['slot_from'] = pd.to_datetime(df['slot_from'], errors='coerce').dt.hour
+    df['dia_semana'] = df['Fecha'].dt.day_name(locale='es_ES')
+    
     df = df[df['estado'] == 'FINISHED']
     df = df[(df['slot_from'] >= hora_apertura) & (df['slot_from'] <= hora_cierre)]
+    
+    # Filtrar por el día seleccionado
+    nombre_dia_seleccionado = dia_seleccionado.lower().capitalize()
+    df = df[df['dia_semana'] == nombre_dia_seleccionado]
+    
     return df
 
 # Función para generar el reporte
 def generar_reporte(df):
     df = procesar_datos(df)
-    if df is None:
+    if df.empty:
+        st.warning("⚠️ No hay datos disponibles para el día seleccionado.")
         return
 
     total_dias = df['Fecha'].dt.date.nunique()
-
     col1, col2 = st.columns(2)
 
     if 'items' in df.columns and 'slot_from' in df.columns:
@@ -72,7 +83,7 @@ def generar_reporte(df):
             y='items:Q',
             color='operational_model:N',
             tooltip=['slot_from', 'items', 'operational_model']
-        ).properties(title="📊 Preferencia de Slot por Modelo Operativo")
+        ).properties(title=f"📊 Preferencia de Slot por Modelo Operativo - {dia_seleccionado}")
         
         col1.altair_chart(chart1, use_container_width=True)
 
@@ -82,46 +93,31 @@ def generar_reporte(df):
         chart2 = alt.Chart(pd.DataFrame({'Hora': ftes_horarios.index, 'Recursos': ftes_horarios.values}))\
             .mark_bar(color='#c7e59f')\
             .encode(x='Hora:O', y='Recursos:Q', tooltip=['Hora', 'Recursos'])\
-            .properties(title="📊 Recursos Necesarios por Hora")
+            .properties(title=f"📊 Recursos Necesarios por Hora - {dia_seleccionado}")
         
         col2.altair_chart(chart2, use_container_width=True)
 
     st.markdown("---")
-
     col3, col4 = st.columns(2)
-    fechas_pronostico = pd.date_range(start=fecha_inicio_pronostico, end=fecha_fin_pronostico)
-    recursos_por_dia = {}
-
-    for fecha in fechas_pronostico:
-        demanda_dia_historico = df[df['Fecha'].dt.date == fecha.date()].groupby('slot_from')['items'].sum()
-        recursos_dia = (demanda_dia_historico / productividad_estimada).apply(np.ceil).fillna(1).astype(int)
-
-        if evento_especial and fecha_inicio_evento and fecha_fin_evento:
-            if fecha_inicio_evento <= fecha.date() <= fecha_fin_evento:
-                recursos_dia = recursos_dia * (1 + impacto_evento / 100)
-                recursos_dia = recursos_dia.apply(np.ceil).astype(int)
-
-        recursos_por_dia[fecha.date()] = recursos_dia
-
-    recursos_df = pd.DataFrame(recursos_por_dia).fillna(1).astype(int)
-    col3.header("📋 Pronóstico de Recursos por Hora vs Día")
-    col3.dataframe(recursos_df)
-    
-    explicacion = """
+    explicacion = f"""
     ### Justificación del Pronóstico de Recursos
-    - Se ha tomado el histórico de demanda para calcular los recursos necesarios por hora.
-    - En caso de evento especial, se ha aplicado un incremento del {}% en las fechas seleccionadas.
-    - Los recursos han sido calculados basándose en una productividad estimada de {} items por hora.
-    """.format(impacto_evento, productividad_estimada)
+    - Datos mostrados para **{dia_seleccionado}**.
+    - Se calcula la demanda promedio por hora basada en el histórico.
+    - En caso de evento especial, se aplica un incremento del {impacto_evento}%.
+    - Los recursos se basan en una productividad estimada de {productividad_estimada} items por hora.
+    """
     col4.markdown(explicacion)
 
 # Cargar archivo CSV y ejecutar el análisis
 if archivo_csv is not None:
     df = pd.read_csv(archivo_csv)
-    st.success("✅ Archivo cargado correctamente")
-    st.dataframe(df.head())
+    df = procesar_datos(df)
     
-    if st.button("📄 Generar Reporte PDF"):
+    if not df.empty:
+        st.success(f"✅ Datos cargados para {dia_seleccionado}")
+        st.dataframe(df.head())
         generar_reporte(df)
+    else:
+        st.warning("⚠️ No hay datos disponibles para el día seleccionado.")
 
 st.write("🚀 Listo para generar reportes en la nube con In-Staffing!")
