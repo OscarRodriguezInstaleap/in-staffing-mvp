@@ -84,7 +84,7 @@ def generar_reporte(df):
     recursos_por_dia = {}
 
     for fecha in fechas_pronostico:
-        demanda_dia_historico = df[df['Fecha'].dt.date == fecha.date()].groupby('slot_from')['items'].sum()
+        demanda_dia_historico = df.groupby('slot_from')['items'].sum()
         recursos_dia = (demanda_dia_historico / productividad_estimada).apply(np.ceil).fillna(1).astype(int)
 
         if evento_especial and fecha_inicio_evento and fecha_fin_evento:
@@ -97,6 +97,13 @@ def generar_reporte(df):
     recursos_df = pd.DataFrame(recursos_por_dia).fillna(1).astype(int)
     col3.header("📋 Pronóstico de Recursos por Hora vs Día")
     col3.dataframe(recursos_df)
+
+    # Productividad de Pickers
+    if 'picker' in df.columns:
+        productividad_pick = df.groupby('picker').agg({'items': 'sum', 'Fecha': 'count'}).rename(columns={'Fecha': 'Pedidos_Atendidos'})
+        productividad_pick['Items por Pedido'] = productividad_pick['items'] / productividad_pick['Pedidos_Atendidos']
+        col4.header("🏆 Productividad de Pickers")
+        col4.dataframe(productividad_pick)
 
 if archivo_csv is not None:
     df = pd.read_csv(archivo_csv)
