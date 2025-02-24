@@ -81,7 +81,7 @@ def generar_reporte(df):
     st.markdown("---")
     col3, col4 = st.columns(2)
     fechas_pronostico = pd.date_range(start=fecha_inicio_pronostico, end=fecha_fin_pronostico)
-    recursos_por_dia = {}
+    recursos_por_dia = []
 
     for fecha in fechas_pronostico:
         demanda_dia_historico = df.groupby('slot_from')['items'].sum()
@@ -92,18 +92,16 @@ def generar_reporte(df):
                 recursos_dia = recursos_dia * (1 + impacto_evento / 100)
                 recursos_dia = recursos_dia.apply(np.ceil).astype(int)
 
-        recursos_por_dia[fecha.date()] = recursos_dia
+        for hora, recursos in recursos_dia.items():
+            recursos_por_dia.append({'Fecha': fecha.date(), 'Hora': hora, 'Recursos': recursos})
 
     recursos_df = pd.DataFrame(recursos_por_dia).fillna(1).astype(int)
-    col3.header("📋 Pronóstico de Recursos por Hora vs Día")
-    col3.dataframe(recursos_df)
-
-    # Productividad de Pickers
-    if 'picker' in df.columns:
-        productividad_pick = df.groupby('picker').agg({'items': 'sum', 'Fecha': 'count'}).rename(columns={'Fecha': 'Pedidos_Atendidos'})
-        productividad_pick['Items por Pedido'] = productividad_pick['items'] / productividad_pick['Pedidos_Atendidos']
-        col4.header("🏆 Productividad de Pickers")
-        col4.dataframe(productividad_pick)
+    if not recursos_df.empty:
+        fig3 = px.imshow(recursos_df.pivot(index='Fecha', columns='Hora', values='Recursos'),
+                         labels=dict(x="Hora del Día", y="Fecha", color="Recursos"),
+                         title="📋 Pronóstico de Recursos por Hora vs Día",
+                         aspect="auto")
+        col3.plotly_chart(fig3, use_container_width=True)
 
 if archivo_csv is not None:
     df = pd.read_csv(archivo_csv)
