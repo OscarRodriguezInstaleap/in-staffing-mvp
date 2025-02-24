@@ -1,4 +1,4 @@
-import streamlit as st
+port streamlit as st
 import pandas as pd
 import os
 import numpy as np
@@ -84,19 +84,19 @@ def generar_reporte(df):
     recursos_por_dia = []
 
     for fecha in fechas_pronostico:
-        demanda_dia_historico = df.groupby('slot_from')['items'].sum()
-        recursos_dia = (demanda_dia_historico / productividad_estimada).apply(np.ceil).fillna(1).astype(int)
+        demanda_dia_historico = df[df['Fecha'].dt.date.isin([fecha.date() - timedelta(days=30*i) for i in range(1, 4)])].groupby('slot_from')['items'].mean()
+        recursos_dia = (demanda_dia_historico / productividad_estimada).fillna(1).astype(int)
 
         if evento_especial and fecha_inicio_evento and fecha_fin_evento:
             if fecha_inicio_evento <= fecha.date() <= fecha_fin_evento:
-                recursos_dia = recursos_dia * (1 + impacto_evento / 100)
-                recursos_dia = recursos_dia.apply(np.ceil).astype(int)
+                recursos_dia = (recursos_dia * (1 + impacto_evento / 100)).round().astype(int)
 
         for hora, recursos in recursos_dia.items():
             recursos_por_dia.append({'Fecha': fecha.date(), 'Hora': hora, 'Recursos': recursos})
 
-    recursos_df = pd.DataFrame(recursos_por_dia).fillna(1).astype(int)
+    recursos_df = pd.DataFrame(recursos_por_dia)
     if not recursos_df.empty:
+        recursos_df['Hora'] = recursos_df['Hora'].astype(str)
         fig3 = px.imshow(recursos_df.pivot(index='Fecha', columns='Hora', values='Recursos'),
                          labels=dict(x="Hora del Día", y="Fecha", color="Recursos"),
                          title="📋 Pronóstico de Recursos por Hora vs Día",
