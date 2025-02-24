@@ -66,14 +66,19 @@ def generar_reporte(df):
     col1, col2 = st.columns(2)
 
     if 'items' in df.columns and 'slot_from' in df.columns:
+        demanda_por_slot = df.groupby(['slot_from', 'operational_model'])['items'].sum().reset_index()
+        fig1 = px.line(demanda_por_slot, x='slot_from', y='items', color='operational_model', markers=True,
+                       labels={'slot_from': 'Hora', 'items': 'Ítems'}, title="📊 Preferencia de Slot por Modelo Operativo")
+        col1.plotly_chart(fig1, use_container_width=True)
+        
         demanda_horaria = df.groupby('slot_from')['items'].sum() / total_dias
         ftes_horarios = (demanda_horaria / productividad_estimada).apply(np.ceil).astype(int)
         
-        fig = px.bar(x=ftes_horarios.index, y=ftes_horarios.values, labels={'x': 'Hora', 'y': 'Recursos'}, title="📊 Recursos Necesarios por Hora")
-        col1.plotly_chart(fig, use_container_width=True)
-
+        fig2 = px.bar(x=ftes_horarios.index, y=ftes_horarios.values, labels={'x': 'Hora', 'y': 'Recursos'},
+                      title="📊 Recursos Necesarios por Hora")
+        col2.plotly_chart(fig2, use_container_width=True)
+    
     st.markdown("---")
-
     col3, col4 = st.columns(2)
     fechas_pronostico = pd.date_range(start=fecha_inicio_pronostico, end=fecha_fin_pronostico)
     recursos_por_dia = {}
@@ -92,16 +97,7 @@ def generar_reporte(df):
     recursos_df = pd.DataFrame(recursos_por_dia).fillna(1).astype(int)
     col3.header("📋 Pronóstico de Recursos por Hora vs Día")
     col3.dataframe(recursos_df)
-    
-    explicacion = """
-    ### Justificación del Pronóstico de Recursos
-    - Se ha tomado el histórico de demanda para calcular los recursos necesarios por hora.
-    - En caso de evento especial, se ha aplicado un incremento del {}% en las fechas seleccionadas.
-    - Los recursos han sido calculados basándose en una productividad estimada de {} items por hora.
-    """.format(impacto_evento, productividad_estimada)
-    col4.markdown(explicacion)
 
-# Cargar archivo CSV y ejecutar el análisis
 if archivo_csv is not None:
     df = pd.read_csv(archivo_csv)
     st.success("✅ Archivo cargado correctamente")
