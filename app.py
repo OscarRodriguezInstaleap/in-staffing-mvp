@@ -53,7 +53,7 @@ def procesar_datos(df):
     df = df[(df['slot_from'] >= hora_apertura) & (df['slot_from'] <= hora_cierre)]
     return df
 
-# Función para generar el pronóstico en formato de tabla
+# Generar la tabla de pronóstico
 def generar_tabla_pronostico(df):
     df = procesar_datos(df)
     if df is None or df.empty:
@@ -77,6 +77,7 @@ def generar_tabla_pronostico(df):
             if fecha_inicio_evento <= fecha.date() <= fecha_fin_evento:
                 recursos_dia = (recursos_dia * (1 + impacto_evento / 100)).round().astype(int)
 
+        recursos_dia = recursos_dia.apply(lambda x: max(x, 1))  # Asegurar mínimo 1 recurso por hora
         recursos_por_dia[fecha.date()] = recursos_dia
 
     # Convertir el diccionario en DataFrame
@@ -93,9 +94,41 @@ def generar_tabla_pronostico(df):
 
     # Mostrar la tabla con formato
     st.header("📋 Pronóstico de Recursos por Hora vs Día")
-    st.dataframe(recursos_df.style.applymap(lambda x: 'background-color: lightgreen' if x < 5 else 
-                                                       'background-color: yellow' if 5 <= x < 10 else 
-                                                       'background-color: red'))
+    st.dataframe(recursos_df)
+
+# Generar gráfico de Preferencia de Slot
+def generar_grafico_slot(df):
+    demanda_slot = df.groupby(['slot_from', 'operational_model'])['items'].sum().reset_index()
+    fig = px.line(demanda_slot, x='slot_from', y='items', color='operational_model', markers=True, 
+                  labels={'slot_from': "Hora del Día", 'items': "Cantidad de Ítems"},
+                  title="📊 Preferencia de Slot por Modelo Operativo")
+    st.plotly_chart(fig, use_container_width=True)
+
+# Generar gráfico de Recursos Necesarios por Hora
+def generar_grafico_recursos(df):
+    demanda_horaria = df.groupby('slot_from')['items'].sum() / df['Fecha'].dt.date.nunique()
+    ftes_horarios = (demanda_horaria / productividad_estimada).apply(np.ceil).astype(int)
+
+    fig = px.bar(x=ftes_horarios.index, y=ftes_horarios.values, 
+                 labels={'x': "Hora del Día", 'y': "Recursos Necesarios"},
+                 title="📊 Recursos Necesarios por Hora")
+    st.plotly_chart(fig, use_container_width=True)
+
+# Score Card de Productividad de Pickers
+def generar_score_card(df):
+    st.header("🏆 Productividad de Pickers")
+    ranking = df.groupby('picker').agg({
+        'items': 'sum',
+        'actual_fin_picking': 'count',
+        'ontime': lambda x: (x == 'on_time').sum()
+    }).rename(columns={'items': 'Total_Items', 'actual_fin_picking': 'Ordenes_Procesadas', 'ontime': 'Ordenes_On_Time'})
+
+    ranking['Velocidad_Promedio_Items_h'] = (ranking['Total_Items'] / ranking['Ordenes_Procesadas']).fillna(0)
+    ranking['Porcentaje_Ordenes_On_Time'] = ((ranking['Ordenes_On_Time'] / ranking['Ordenes_Procesadas']) * 100).fillna(0)
+    ranking['Puntaje'] = (ranking['Total_Items'] * 0.4 + ranking['Velocidad_Promedio_Items_h'] * 0.3 + ranking['Porcentaje_Ordenes_On_Time'] * 0.3).apply(lambda x: min(100, round(x)))
+    ranking = ranking.sort_values(by='Puntaje', ascending=False)
+
+    st.dataframe(ranking)
 
 # Cargar archivo CSV y ejecutar el análisis
 if archivo_csv is not None:
@@ -103,7 +136,10 @@ if archivo_csv is not None:
     st.success("✅ Archivo cargado correctamente")
     st.dataframe(df.head())
 
-    if st.button("📄 Generar Pronóstico"):
+    if st.button("📊 Generar Análisis"):
+        generar_grafico_slot(df)
+        generar_grafico_recursos(df)
         generar_tabla_pronostico(df)
+        generar_score_card(df)
 
 st.write("🚀 Listo para generar reportes en la nube con In-Staffing!")
