@@ -49,9 +49,15 @@ def procesar_datos(df):
     df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
     df['items'] = pd.to_numeric(df['items'], errors='coerce').fillna(0)
     df['slot_from'] = pd.to_datetime(df['slot_from'], errors='coerce').dt.hour
-    df['day_of_week'] = df['Fecha'].dt.day_name()
     df = df[df['estado'] == 'FINISHED']
     df = df[(df['slot_from'] >= hora_apertura) & (df['slot_from'] <= hora_cierre)]
+
+    # Verificar si 'Fecha' está correctamente convertida antes de crear 'day_of_week'
+    if 'Fecha' in df.columns and df['Fecha'].notna().all():
+        df['day_of_week'] = df['Fecha'].dt.day_name()
+    else:
+        df['day_of_week'] = "Desconocido"
+
     return df
 
 # Generar gráficos de demanda por modelo operativo
@@ -69,10 +75,15 @@ def generar_graficos_demanda(df):
 
         # Gráfico de demanda por día de la semana
         st.header(f"📊 Comportamiento Histórico de Demanda por Día - {modelo}")
-        demanda_por_dia = df_modelo.groupby('day_of_week')['items'].mean().reset_index()
-        fig_dia = px.bar(demanda_por_dia, x='day_of_week', y='items', labels={'items': "Ítems Promedio", 'day_of_week': "Día de la Semana"},
-                         title=f"Demanda Promedio por Día de la Semana - {modelo}")
-        st.plotly_chart(fig_dia, use_container_width=True)
+        
+        # Verificar si la columna existe antes de intentar agrupar
+        if 'day_of_week' in df_modelo.columns:
+            demanda_por_dia = df_modelo.groupby('day_of_week')['items'].mean().reset_index()
+            fig_dia = px.bar(demanda_por_dia, x='day_of_week', y='items', labels={'items': "Ítems Promedio", 'day_of_week': "Día de la Semana"},
+                             title=f"Demanda Promedio por Día de la Semana - {modelo}")
+            st.plotly_chart(fig_dia, use_container_width=True)
+        else:
+            st.warning(f"No se pudo calcular la demanda por día para {modelo} debido a datos incompletos.")
 
         # Gráfico de preferencia de slot
         st.header(f"📊 Preferencia de Slot - {modelo}")
@@ -125,8 +136,8 @@ if archivo_csv is not None:
     st.dataframe(df.head())
 
     if st.button("📊 Generar Análisis"):
+        df = procesar_datos(df)
         generar_graficos_demanda(df)
         generar_tabla_pronostico(df)
 
 st.write("🚀 Listo para generar reportes en la nube con In-Staffing!")
-
