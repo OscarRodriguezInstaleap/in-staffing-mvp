@@ -12,16 +12,16 @@ st.set_page_config(page_title="In-Staffing MVP", layout="wide")
 REPORTS_DIR = "reports"
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
-st.title("📊 In-Staffing: Planificación de Recursos")
+st.title("In-Staffing: Planificación de Recursos")
 st.markdown("---")
 
 # Sección para cargar el archivo CSV
-st.header("📂 Cargar Archivo CSV")
+st.header("Cargar Archivo CSV")
 archivo_csv = st.file_uploader("Sube un archivo de datos de operaciones (CSV)", type=["csv"])
 
 # Parámetros adicionales en la barra lateral
 with st.sidebar:
-    with st.expander("⚙️ Configuraciones Generales"):
+    with st.expander("Configuraciones Generales"):
         hora_apertura = st.slider("Hora de apertura de tienda", 0, 23, 8)
         hora_cierre = st.slider("Hora de cierre de tienda", 0, 23, 22)
         productividad_estimada = st.number_input("Productividad Estimada por Hora", min_value=10, max_value=500, value=100, step=10)
@@ -33,7 +33,7 @@ with st.sidebar:
         if (fecha_fin_pronostico - fecha_inicio_pronostico).days > 30:
             st.error("El periodo del pronóstico no puede ser mayor a 30 días.")
 
-    with st.expander("📅 ¿Evento Especial?"):
+    with st.expander("Evento Especial"):
         evento_especial = st.checkbox("¿Habrá un evento especial?")
         fecha_inicio_evento = None
         fecha_fin_evento = None
@@ -51,12 +51,7 @@ def procesar_datos(df):
     df['slot_from'] = pd.to_datetime(df['slot_from'], errors='coerce').dt.hour
     df = df[df['estado'] == 'FINISHED']
     df = df[(df['slot_from'] >= hora_apertura) & (df['slot_from'] <= hora_cierre)]
-
-    # Verificar si 'Fecha' está correctamente convertida antes de crear 'day_of_week'
-    if 'Fecha' in df.columns and df['Fecha'].notna().all():
-        df['day_of_week'] = df['Fecha'].dt.day_name()
-    else:
-        df['day_of_week'] = "Desconocido"
+    df['day_of_week'] = df['Fecha'].dt.day_name()
 
     return df
 
@@ -67,30 +62,23 @@ def generar_graficos_demanda(df):
     for modelo in modelos_operativos:
         df_modelo = df[df['operational_model'] == modelo]
 
-        # Gráfico de comportamiento histórico
-        st.header(f"📊 Comportamiento Histórico de Demanda - {modelo}")
-        fig_hist = px.bar(df_modelo, x='Fecha', y='items', labels={'items': "Cantidad de Ítems", 'Fecha': "Día"},
-                          title=f"Comportamiento Histórico de Demanda - {modelo}")
-        st.plotly_chart(fig_hist, use_container_width=True)
+        col1, col2 = st.columns(2)
 
-        # Gráfico de demanda por día de la semana
-        st.header(f"📊 Comportamiento Histórico de Demanda por Día - {modelo}")
-        
-        # Verificar si la columna existe antes de intentar agrupar
-        if 'day_of_week' in df_modelo.columns:
-            demanda_por_dia = df_modelo.groupby('day_of_week')['items'].mean().reset_index()
-            fig_dia = px.bar(demanda_por_dia, x='day_of_week', y='items', labels={'items': "Ítems Promedio", 'day_of_week': "Día de la Semana"},
-                             title=f"Demanda Promedio por Día de la Semana - {modelo}")
+        with col1:
+            st.subheader(f"Comportamiento Histórico de Demanda - {modelo}")
+            fig_hist = px.bar(df_modelo, x='Fecha', y='items', labels={'items': "Cantidad de Ítems", 'Fecha': "Día"})
+            st.plotly_chart(fig_hist, use_container_width=True)
+
+        with col2:
+            st.subheader(f"Demanda Promedio por Día de la Semana - {modelo}")
+            demanda_por_dia = df_modelo.groupby('day_of_week')['items'].sum().reset_index()
+            fig_dia = px.bar(demanda_por_dia, x='day_of_week', y='items', labels={'items': "Ítems Promedio", 'day_of_week': "Día de la Semana"})
             st.plotly_chart(fig_dia, use_container_width=True)
-        else:
-            st.warning(f"No se pudo calcular la demanda por día para {modelo} debido a datos incompletos.")
 
-        # Gráfico de preferencia de slot
-        st.header(f"📊 Preferencia de Slot - {modelo}")
+        st.subheader(f"Preferencia de Slot - {modelo}")
         demanda_slot = df_modelo.groupby('slot_from')['items'].sum().reset_index()
         demanda_slot['% Demanda'] = (demanda_slot['items'] / demanda_slot['items'].sum()) * 100
-        fig_slot = px.bar(demanda_slot, x='slot_from', y='% Demanda', labels={'slot_from': "Hora del Día", '% Demanda': "Porcentaje de Demanda"},
-                          title=f"Preferencia de Slot - {modelo}")
+        fig_slot = px.bar(demanda_slot, x='slot_from', y='% Demanda', labels={'slot_from': "Hora del Día", '% Demanda': "Porcentaje de Demanda"})
         st.plotly_chart(fig_slot, use_container_width=True)
 
 # Generar tabla de pronóstico por modelo operativo
@@ -100,13 +88,14 @@ def generar_tabla_pronostico(df):
     for modelo in modelos_operativos:
         df_modelo = df[df['operational_model'] == modelo]
 
-        st.header(f"📋 Pronóstico de Recursos por Hora vs Día - {modelo}")
+        st.subheader(f"Pronóstico de Recursos por Hora vs Día - {modelo}")
 
         fechas_pronostico = pd.date_range(start=fecha_inicio_pronostico, end=fecha_fin_pronostico)
         recursos_por_dia = {}
 
         for fecha in fechas_pronostico:
-            demanda_dia_historico = df_modelo[df_modelo['Fecha'].dt.date.isin([fecha.date() - timedelta(days=30*i) for i in range(1, 4)])].groupby('slot_from')['items'].mean()
+            fechas_historicas = [fecha.date() - timedelta(days=7 * i) for i in range(1, 5)]
+            demanda_dia_historico = df_modelo[df_modelo['Fecha'].dt.date.isin(fechas_historicas)].groupby('slot_from')['items'].sum()
             recursos_dia = (demanda_dia_historico / productividad_estimada).fillna(1).astype(int)
 
             # Aplicar incremento de evento especial si aplica
@@ -114,17 +103,16 @@ def generar_tabla_pronostico(df):
                 if fecha_inicio_evento <= fecha.date() <= fecha_fin_evento:
                     recursos_dia = (recursos_dia * (1 + impacto_evento / 100)).round().astype(int)
 
-            recursos_dia = recursos_dia.apply(lambda x: max(x, 1))  # Asegurar mínimo 1 recurso por hora
+            recursos_dia = recursos_dia.apply(lambda x: max(x, 1))
             recursos_por_dia[fecha.date()] = recursos_dia
 
-        # Convertir en DataFrame
         recursos_df = pd.DataFrame(recursos_por_dia).T.fillna(1).astype(int)
 
         # Asegurar que las columnas corresponden a las horas de apertura y cierre
         horas = list(range(hora_apertura, hora_cierre + 1))
         for hora in horas:
             if hora not in recursos_df.columns:
-                recursos_df[hora] = 1  # Asignar mínimo 1 recurso si no hay datos
+                recursos_df[hora] = 1
 
         recursos_df = recursos_df[horas]
         st.dataframe(recursos_df)
@@ -132,12 +120,13 @@ def generar_tabla_pronostico(df):
 # Cargar archivo CSV y ejecutar el análisis
 if archivo_csv is not None:
     df = pd.read_csv(archivo_csv)
-    st.success("✅ Archivo cargado correctamente")
+    st.success("Archivo cargado correctamente")
     st.dataframe(df.head())
 
-    if st.button("📊 Generar Análisis"):
+    if st.button("Generar Análisis"):
         df = procesar_datos(df)
         generar_graficos_demanda(df)
         generar_tabla_pronostico(df)
 
-st.write("🚀 Listo para generar reportes en la nube con In-Staffing!")
+st.write("Listo para generar reportes con In-Staffing!")
+
