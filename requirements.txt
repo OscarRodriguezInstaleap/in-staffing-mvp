@@ -4,3 +4,5 @@ reportlab
 matplotlib
 seaborn
 plotly
+statsmodels
+prophet
