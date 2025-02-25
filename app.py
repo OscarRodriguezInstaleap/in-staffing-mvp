@@ -5,21 +5,30 @@ import numpy as np
 import plotly.express as px
 from datetime import datetime, timedelta
 
-# Ajuste de fuente para plotly (puede que no se aplique en todos los entornos)
+# Ajuste de fuente para Plotly
 CUSTOM_FONT = dict(family="Roboto", size=12)
 
-# Configuración de la aplicación
+# Mapeo de días de la semana para un orden y traducción correctos
+DIAS_ORDENADOS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+dias_map = {
+    0: "Lunes",
+    1: "Martes",
+    2: "Miércoles",
+    3: "Jueves",
+    4: "Viernes",
+    5: "Sábado",
+    6: "Domingo"
+}
+
 st.set_page_config(page_title="In-Staffing MVP", layout="wide")
 os.makedirs("reports", exist_ok=True)
 
 st.title("In-Staffing: Planificación de Recursos")
 st.markdown("---")
 
-# Sección para cargar el archivo CSV
 st.header("Cargar Archivo CSV")
 archivo_csv = st.file_uploader("Sube un archivo de datos de operaciones (CSV)", type=["csv"])
 
-# Parámetros adicionales en la barra lateral
 with st.sidebar:
     with st.expander("Configuraciones Generales"):
         hora_apertura = st.slider("Hora de apertura de tienda", 0, 23, 8)
@@ -52,55 +61,60 @@ def procesar_datos(df: pd.DataFrame) -> pd.DataFrame:
     df["slot_from"] = pd.to_datetime(df["slot_from"], errors="coerce").dt.hour
     df = df[df["estado"] == "FINISHED"]
     df = df[(df["slot_from"] >= hora_apertura) & (df["slot_from"] <= hora_cierre)]
-    df["day_of_week"] = df["Fecha"].dt.day_name().fillna("Desconocido")
+
+    # Convertir el weekday (0-6) a texto en español (lunes-domingo)
+    df["weekday_num"] = df["Fecha"].dt.weekday
+    df["day_of_week"] = df["weekday_num"].map(dias_map).fillna("Desconocido")
+
+    # Convertir a categoría ordenada para graficar en orden (Lunes a Domingo)
+    df["day_of_week"] = pd.Categorical(df["day_of_week"], categories=DIAS_ORDENADOS, ordered=True)
+
     return df
 
 def grafico1_historia(df_modelo: pd.DataFrame, modelo: str):
     """Gráfico de barras color #19521bff con la demanda histórica por día."""
-    st.subheader(f"Comportamiento Historico de demanda {modelo}")
+    st.subheader(f"Comportamiento histórico de demanda {modelo}")
     fig_hist = px.bar(
         df_modelo,
         x="Fecha",
         y="items",
         labels={"items": "Cantidad de Ítems", "Fecha": "Día"},
-        color_discrete_sequence=["#19521b"],
+        color_discrete_sequence=["#19521b"],  # #19521bff
         title="",
     )
     fig_hist.update_layout(font=CUSTOM_FONT, title_font_size=16)
     st.plotly_chart(fig_hist, use_container_width=True)
 
 def grafico2_dia_semana(df_modelo: pd.DataFrame, modelo: str):
-    """Gráfico de barras color #c7e59fff con la demanda promedio de ítems por día de la semana."""
-    st.subheader(f"Comportamiento Historico de demanda {modelo} por día de la semana")
-    # Sumamos la cantidad de items por cada día de la semana
+    """
+    Gráfico de barras color #c7e59fff con la demanda promedio de ítems por día de la semana.
+    Se basa en el total de ítems del día de la semana / cantidad de ese día encontrado.
+    """
+    st.subheader(f"Comportamiento histórico de demanda {modelo} por día de la semana")
     demanda_por_dia = df_modelo.groupby("day_of_week")["items"].sum().reset_index()
 
-    # Calculamos cuántos días hay de cada day_of_week para hacer un promedio correcto
-    conteo_por_dia = (
-        df_modelo.groupby("day_of_week")["Fecha"]
-        .nunique()
-        .reset_index()
-        .rename(columns={"Fecha": "Cant_dias"})
-    )
+    # Cuántos días de la semana hay
+    conteo_por_dia = df_modelo.groupby("day_of_week")["Fecha"].nunique().reset_index().rename(columns={"Fecha": "Cant_dias"})
     merge_dia = pd.merge(demanda_por_dia, conteo_por_dia, on="day_of_week", how="left")
 
-    # Dividimos total de ítems de cada día de la semana entre la cantidad de días que aparezcan en el archivo
+    # Ítems promedio
     merge_dia["items_promedio"] = merge_dia["items"] / merge_dia["Cant_dias"].replace(0, 1)
 
     fig_dia = px.bar(
         merge_dia,
         x="day_of_week",
         y="items_promedio",
-        labels={"items_promedio": "Ítems Promedio", "day_of_week": "Día de la Semana"},
+        labels={"items_promedio": "Ítems promedio", "day_of_week": "Día de la semana"},
         color_discrete_sequence=["#c7e59f"],
         title="",
+        category_orders={"day_of_week": DIAS_ORDENADOS},  # Asegura el orden de lunes a domingo
     )
     fig_dia.update_layout(font=CUSTOM_FONT, title_font_size=16)
     st.plotly_chart(fig_dia, use_container_width=True)
 
 def grafico3_preferencia_slot(df_modelo: pd.DataFrame, modelo: str):
     """Gráfico de barras color #1e9d51ff con % de items por slot."""
-    st.subheader(f"Preferencia de Slot - {modelo}")
+    st.subheader(f"Preferencia de slot - {modelo}")
     demanda_slot = df_modelo.groupby("slot_from")["items"].sum().reset_index()
     total_items = demanda_slot["items"].sum()
     if total_items == 0:
@@ -112,7 +126,7 @@ def grafico3_preferencia_slot(df_modelo: pd.DataFrame, modelo: str):
         demanda_slot,
         x="slot_from",
         y="pct",
-        labels={"slot_from": "Hora del Día", "pct": "Porcentaje de Demanda"},
+        labels={"slot_from": "Hora del día", "pct": "Porcentaje de demanda"},
         color_discrete_sequence=["#1e9d51"],
         title="",
     )
@@ -121,68 +135,47 @@ def grafico3_preferencia_slot(df_modelo: pd.DataFrame, modelo: str):
 
 def tabla_pronostico(df_modelo: pd.DataFrame, modelo: str):
     """
-    Tabla de pronóstico para los días en [fecha_inicio_pronostico, fecha_fin_pronostico].
-    Se basa en la lógica:
-      - Identificamos el day_of_week del día a pronosticar
-      - Buscamos en df_modelo todos los registros con ese day_of_week
-      - Sumamos items por slot
-      - Dividimos por la cantidad de días de esa semana que tengamos en el histórico => items promedio
-      - Aplica multiplicador de evento especial
-      - Divide por productividad_estimada para obtener # de recursos
+    Genera la tabla de pronóstico de recursos por día (fecha_inicio_pronostico a fecha_fin_pronostico)
+    con filas = fechas y columnas = horas (hora_apertura a hora_cierre).
     """
     st.subheader(f"Pronóstico de demanda - {modelo}")
-
     fechas_pronostico = pd.date_range(start=fecha_inicio_pronostico, end=fecha_fin_pronostico)
     recursos_por_dia = {}
 
-    # Precalcular day_of_week, sum items por slot, conteo de días
-    # De esta forma evitamos sumas exageradas
-    df_modelo["weekday_number"] = df_modelo["Fecha"].dt.weekday
-    # Suma de items por (weekday_number, slot_from)
-    sum_items = df_modelo.groupby(["weekday_number", "slot_from"])["items"].sum().reset_index()
-    # Conteo de días distintos por weekday_number
-    days_count = (
-        df_modelo.groupby("weekday_number")["Fecha"].apply(lambda x: x.dt.date.nunique())
-        .reset_index()
-        .rename(columns={"Fecha": "Cant_dias"})
-    )
+    # Precalcular info para evitar picos
+    # Agrupamos por (weekday_num, slot_from). Suma total de items en el histórico
+    df_modelo["weekday_num"] = df_modelo["Fecha"].dt.weekday
+    sum_items = df_modelo.groupby(["weekday_num", "slot_from"])["items"].sum().reset_index()
+    # Cantidad de días en el histórico para un weekday_num
+    days_count = df_modelo.groupby("weekday_num")["Fecha"].apply(lambda x: x.dt.date.nunique()).reset_index().rename(columns={"Fecha": "Cant_dias"})
 
-    # Convertimos a un pivot para más fácil acceso
-    pivot_sum = sum_items.pivot(index="weekday_number", columns="slot_from", values="items").fillna(0)
-
-    # Diccionario con la cantidad de días por weekday_number
-    days_count_dict = dict(zip(days_count["weekday_number"], days_count["Cant_dias"]))
+    # Pivot para tener slot_from en columnas
+    pivot_sum = sum_items.pivot(index="weekday_num", columns="slot_from", values="items").fillna(0)
+    days_count_dict = dict(zip(days_count["weekday_num"], days_count["Cant_dias"]))
 
     for fecha in fechas_pronostico:
-        # Sacamos el weekday_number
         wd = fecha.weekday()
-        # Revisamos cuántos días hay en el histórico
         ndias = days_count_dict.get(wd, 1)
 
         if wd not in pivot_sum.index:
-            # Si no tenemos datos para ese weekday, asignamos 1 a todo
+            # Sin datos para este day_of_week => asignar 1 item
             base_items = pd.Series(1, index=pivot_sum.columns)
         else:
-            # Tomamos la fila con sums de items por slot
             base_items = pivot_sum.loc[wd].copy()
-            # Dividimos por la cantidad de días de ese weekday
             base_items = base_items / max(ndias, 1)
 
-        # Aplica evento especial
         if evento_especial and fecha_inicio_evento and fecha_fin_evento:
             if fecha_inicio_evento <= fecha.date() <= fecha_fin_evento:
                 base_items = base_items * (1 + impacto_evento / 100)
 
         # Convertimos a recursos
         recursos_dia = (base_items / productividad_estimada).fillna(1).apply(np.ceil).astype(int)
-        # Mínimo 1 recurso
         recursos_dia = recursos_dia.apply(lambda x: max(x, 1))
 
         recursos_por_dia[fecha.strftime("%d/%m/%Y")] = recursos_dia
 
     pronostico_df = pd.DataFrame(recursos_por_dia).T
     if not pronostico_df.empty:
-        # Aseguramos que las columnas correspondan a las horas de apertura y cierre
         horas = list(range(hora_apertura, hora_cierre + 1))
         for hora in horas:
             if hora not in pronostico_df.columns:
@@ -192,11 +185,10 @@ def tabla_pronostico(df_modelo: pd.DataFrame, modelo: str):
     st.dataframe(pronostico_df.fillna(1).astype(int))
 
 def generar_analisis(df: pd.DataFrame):
-    """Genera las 3 gráficas y la tabla para cada modelo operativo."""
+    """Genera para cada modelo operativo las 3 gráficas y la tabla de pronóstico."""
     modelos_operativos = df["operational_model"].unique()
 
     for modelo in modelos_operativos:
-        # Filtramos para el modelo
         df_modelo = df[df["operational_model"] == modelo].copy()
 
         # LINEA 1: Grafico1 (izq) y Grafico2 (der)
@@ -215,7 +207,6 @@ def generar_analisis(df: pd.DataFrame):
         st.markdown("---")
 
 
-#### EJECUCIÓN PRINCIPAL
 if archivo_csv is not None:
     df = pd.read_csv(archivo_csv)
     st.success("Archivo cargado correctamente")
