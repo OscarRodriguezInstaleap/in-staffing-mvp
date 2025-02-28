@@ -8,25 +8,7 @@ from datetime import datetime, timedelta
 ########################################
 # Estilo y Ajustes
 ########################################
-
-# Ajuste de fuente para Plotly (puede que no se aplique en todos los entornos)
 CUSTOM_FONT = dict(family="Roboto", size=12)
-
-# Utilidad para encerrar un chart en un contenedor con borde
-def chart_with_border(fig):
-    """Muestra la figura en un contenedor con borde y padding."""
-    container_style = """
-    <div style="
-        border: 1px solid #CCC;
-        padding: 10px;
-        margin-bottom: 15px;
-        border-radius: 5px;
-    ">
-    """
-    st.markdown(container_style, unsafe_allow_html=True)
-    st.plotly_chart(fig, use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
 
 ########################################
 # Configuración de la aplicación
@@ -62,31 +44,36 @@ with st.sidebar:
             fecha_fin_evento = st.date_input("Fecha de fin del evento")
             impacto_evento = st.slider("Incremento en demanda (%)", min_value=0, max_value=200, value=20, step=1)
 
+    with st.expander("Extensión de los turnos"):
+        turno_horas = st.selectbox(
+            "Elige la duración del turno (horas)",
+            options=[4, 6, 8],
+            index=1  # Por defecto 6
+        )
+
 
 ########################################
-# Procesamiento de datos base
+# Funciones Principales
 ########################################
+
 def procesar_datos(df: pd.DataFrame) -> pd.DataFrame:
     df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce")
     df["items"] = pd.to_numeric(df["items"], errors="coerce").fillna(0)
     df["slot_from"] = pd.to_datetime(df["slot_from"], errors="coerce").dt.hour
     df = df[df["estado"] == "FINISHED"]
     df = df[(df["slot_from"] >= hora_apertura) & (df["slot_from"] <= hora_cierre)]
+
     # Mapeo de weekday a español y orden
     dias_map = {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes", 5: "Sábado", 6: "Domingo"}
     df["weekday_num"] = df["Fecha"].dt.weekday
     df["day_of_week"] = df["weekday_num"].map(dias_map).fillna("Desconocido")
 
-    # Ordenar días
     DIAS_ORDENADOS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
     df["day_of_week"] = pd.Categorical(df["day_of_week"], categories=DIAS_ORDENADOS, ordered=True)
     return df
 
-########################################
-# Gráficas
-########################################
+
 def grafico1_historia(df_modelo: pd.DataFrame, modelo: str):
-    """Gráfico de barras color #19521bff con la demanda histórica por día."""
     st.subheader(f"Comportamiento histórico de demanda {modelo}")
     fig_hist = px.bar(
         df_modelo,
@@ -97,16 +84,18 @@ def grafico1_historia(df_modelo: pd.DataFrame, modelo: str):
         title="",
     )
     fig_hist.update_layout(font=CUSTOM_FONT, title_font_size=16)
-    chart_with_border(fig_hist)  # Usamos el contenedor con borde
+    st.plotly_chart(fig_hist, use_container_width=True)
+
 
 def grafico2_dia_semana(df_modelo: pd.DataFrame, modelo: str):
-    """Gráfico de barras color #c7e59fff con la demanda promedio de ítems por día de la semana."""
     st.subheader(f"Comportamiento histórico de demanda {modelo} por día de la semana")
     demanda_por_dia = df_modelo.groupby("day_of_week")["items"].sum().reset_index()
-    conteo_por_dia = (df_modelo.groupby("day_of_week")["Fecha"]
-                      .nunique()
-                      .reset_index()
-                      .rename(columns={"Fecha": "Cant_dias"}))
+    conteo_por_dia = (
+        df_modelo.groupby("day_of_week")["Fecha"]
+        .nunique()
+        .reset_index()
+        .rename(columns={"Fecha": "Cant_dias"})
+    )
     merge_dia = pd.merge(demanda_por_dia, conteo_por_dia, on="day_of_week", how="left")
     merge_dia["items_promedio"] = merge_dia["items"] / merge_dia["Cant_dias"].replace(0, 1)
 
@@ -115,15 +104,15 @@ def grafico2_dia_semana(df_modelo: pd.DataFrame, modelo: str):
         x="day_of_week",
         y="items_promedio",
         labels={"items_promedio": "Ítems Promedio", "day_of_week": "Día de la semana"},
-        color_discrete_sequence=["#c7e59f"],  # #c7e59fff
+        color_discrete_sequence=["#c7e59f"],
         title="",
         category_orders={"day_of_week": ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]},
     )
     fig_dia.update_layout(font=CUSTOM_FONT, title_font_size=16)
-    chart_with_border(fig_dia)
+    st.plotly_chart(fig_dia, use_container_width=True)
+
 
 def grafico3_preferencia_slot(df_modelo: pd.DataFrame, modelo: str):
-    """Gráfico de barras color #1e9d51ff con % de items por slot."""
     st.subheader(f"Preferencia de slot - {modelo}")
     demanda_slot = df_modelo.groupby("slot_from")["items"].sum().reset_index()
     total_items = demanda_slot["items"].sum()
@@ -137,30 +126,26 @@ def grafico3_preferencia_slot(df_modelo: pd.DataFrame, modelo: str):
         x="slot_from",
         y="pct",
         labels={"slot_from": "Hora del día", "pct": "Porcentaje de demanda"},
-        color_discrete_sequence=["#1e9d51"],  # #1e9d51ff
+        color_discrete_sequence=["#1e9d51"],
         title="",
     )
     fig_slot.update_layout(font=CUSTOM_FONT, title_font_size=16)
-    chart_with_border(fig_slot)
+    st.plotly_chart(fig_slot, use_container_width=True)
 
-########################################
-# Tabla pronóstico y unificación
-########################################
+
 def tabla_pronostico(df_modelo: pd.DataFrame, modelo: str) -> pd.DataFrame:
-    """
-    Devuelve un DataFrame con el pronóstico (filas = fechas, cols = horas).
-    """
     st.subheader(f"Pronóstico de demanda - {modelo}")
     fechas_pronostico = pd.date_range(start=fecha_inicio_pronostico, end=fecha_fin_pronostico)
     recursos_por_dia = {}
 
-    # Precalcular info
     df_modelo["weekday_num"] = df_modelo["Fecha"].dt.weekday
     sum_items = df_modelo.groupby(["weekday_num", "slot_from"])["items"].sum().reset_index()
-    days_count = (df_modelo.groupby("weekday_num")["Fecha"]
-                  .apply(lambda x: x.dt.date.nunique())
-                  .reset_index()
-                  .rename(columns={"Fecha": "Cant_dias"}))
+    days_count = (
+        df_modelo.groupby("weekday_num")["Fecha"]
+        .apply(lambda x: x.dt.date.nunique())
+        .reset_index()
+        .rename(columns={"Fecha": "Cant_dias"})
+    )
     pivot_sum = sum_items.pivot(index="weekday_num", columns="slot_from", values="items").fillna(0)
     days_count_dict = dict(zip(days_count["weekday_num"], days_count["Cant_dias"]))
 
@@ -192,14 +177,11 @@ def tabla_pronostico(df_modelo: pd.DataFrame, modelo: str) -> pd.DataFrame:
         pronostico_df = pronostico_df[horas]
 
     st.dataframe(pronostico_df.fillna(1).astype(int))
-
     return pronostico_df.fillna(1).astype(int)
 
+
 def unir_tablas_recursos(tablas: dict) -> pd.DataFrame:
-    """
-    Recibe un dict {modelo: dfPronostico} y los suma.
-    Cada df tiene las mismas filas (fechas) y cols (horas).
-    """
+    """Suma las tablas de pronóstico de varios modelos."""
     modelos = list(tablas.keys())
     df_final = tablas[modelos[0]].copy()
 
@@ -208,18 +190,16 @@ def unir_tablas_recursos(tablas: dict) -> pd.DataFrame:
 
     return df_final.fillna(0).astype(int)
 
-########################################
-# Asignación de turnos
-########################################
+
 def asignar_turnos(df_recursos: pd.DataFrame, bloque_horas=6) -> pd.DataFrame:
     """
-    Crea un sistema básico de turnos donde cada bloque de X horas
-    se asigna la máx. de recursos de ese rango horario.
+    Sistema básico de turnos con bloques de X horas.
     Retorna un df con col [Fecha, Turno, Recursos].
     """
     resultados = []
     for fecha_idx in df_recursos.index:
         fila = df_recursos.loc[fecha_idx]
+        # Ordenamos horas en texto
         horas_orden = sorted(fila.index, key=lambda x: int(x))
         i = 0
         while i < len(horas_orden):
@@ -236,9 +216,7 @@ def asignar_turnos(df_recursos: pd.DataFrame, bloque_horas=6) -> pd.DataFrame:
             i += len(subset_hours)
     return pd.DataFrame(resultados)
 
-########################################
-# Generar análisis principal
-########################################
+
 def generar_analisis(df: pd.DataFrame):
     modelos_operativos = df["operational_model"].unique()
     tablas_por_modelo = {}
@@ -246,38 +224,31 @@ def generar_analisis(df: pd.DataFrame):
     for modelo in modelos_operativos:
         df_modelo = df[df["operational_model"] == modelo].copy()
 
-        # LINEA 1: Grafico 1 + Grafico 2
         colA, colB = st.columns(2)
         with colA:
             grafico1_historia(df_modelo, modelo)
         with colB:
             grafico2_dia_semana(df_modelo, modelo)
 
-        # LINEA 2: Grafico 3
         grafico3_preferencia_slot(df_modelo, modelo)
 
-        # LINEA 3: Tabla pronóstico
         pron_df = tabla_pronostico(df_modelo, modelo)
         tablas_por_modelo[modelo] = pron_df
+
         st.markdown("---")
 
-    # Unimos todas las tablas en una sola
     if len(tablas_por_modelo) > 1:
         st.subheader("Recursos Totales (Suma de todos los modelos)")
         df_suma = unir_tablas_recursos(tablas_por_modelo)
         st.dataframe(df_suma)
 
-        # Asignamos turnos con bloque de 6h (por ejemplo)
-        st.subheader("Sistema de Turnos (ejemplo 6h) - Recursos Totales")
-        df_turnos = asignar_turnos(df_suma, bloque_horas=6)
+        st.subheader(f"Sistema de Turnos (Ej. {turno_horas}h) - Recursos Totales")
+        df_turnos = asignar_turnos(df_suma, bloque_horas=turno_horas)
         st.dataframe(df_turnos)
     else:
-        st.info("Solo hay un modelo operativo en el archivo, no se requiere unificación de tablas ni turnos.")
+        st.info("Sólo hay un modelo operativo en el archivo, no se unifican tablas ni turnos.")
 
 
-########################################
-# EJECUCIÓN PRINCIPAL
-########################################
 if archivo_csv is not None:
     df = pd.read_csv(archivo_csv)
     st.success("Archivo cargado correctamente")
