@@ -1,182 +1,139 @@
+# app.py
+# ──────────────────────────────────────────────────────────────
+# MVP "In-Staffing" – versión demo con:
+#  1) Tabla de turnos mostrada primero
+#  2) Duración de turno en horas + minutos (4-9 h)
+#  3) Máximo de recursos disponibles y alerta UnderStaff
+# ──────────────────────────────────────────────────────────────
+
 import streamlit as st
 import pandas as pd
-import os
 import numpy as np
-import plotly.express as px
-import math
-from datetime import datetime, timedelta
+import matplotlib.pyplot as plt
+from math import ceil
 
-########################################
-# Estilo y Ajustes
-########################################
-CUSTOM_FONT = dict(family="Roboto", size=12)
-
-########################################
-# Configuración de la aplicación
-########################################
 st.set_page_config(page_title="In-Staffing MVP", layout="wide")
-os.makedirs("reports", exist_ok=True)
 
 st.title("In-Staffing: Planificación de Recursos")
-st.markdown("---")
+st.markdown("Carga tu archivo CSV para generar el plan de turnos.")
 
-st.header("Cargar Archivo CSV")
-archivo_csv = st.file_uploader("Sube un archivo de datos de operaciones (CSV)", type=["csv"])
-
+# ════════════════════════════════════════
+# Barra lateral – parámetros de usuario
+# ════════════════════════════════════════
 with st.sidebar:
-    with st.expander("Configuraciones Generales"):
-        hora_apertura = st.slider("Hora de apertura de tienda", 0, 23, 8)
-        hora_cierre = st.slider("Hora de cierre de tienda", 0, 23, 22)
-        productividad_estimada = st.number_input("Productividad Estimada por Hora", min_value=10, max_value=500, value=100, step=10)
+    st.header("Configuraciones Generales")
 
-        fecha_inicio_pronostico = st.date_input("Fecha de inicio del pronóstico", datetime.now() + timedelta(days=1))
-        fecha_fin_pronostico = st.date_input("Fecha de fin del pronóstico", fecha_inicio_pronostico + timedelta(days=30))
-        if (fecha_fin_pronostico - fecha_inicio_pronostico).days > 30:
-            st.error("El periodo del pronóstico no puede ser mayor a 30 días.")
+    productividad = st.number_input(
+        "Productividad estimada (pedidos por persona por hora)",
+        min_value=1, max_value=1000, value=10, step=1
+    )
 
-        max_recursos_disponibles = st.number_input(
-            "Máximo de recursos disponibles (0 = sin tope)",
-            min_value=0,
-            step=1,
-            value=0,
-            help="Si la tienda sólo cuenta con un número fijo de recursos, indíquelo aquí para recibir advertencias de Under/Over‑Staff.")
+    st.subheader("Duración de turno")
+    horas_turno = st.number_input("Horas", min_value=4, max_value=9, value=6, step=1)
+    minutos_turno = st.number_input("Minutos", min_value=0, max_value=59, value=0, step=1)
+    duracion_turno = horas_turno + minutos_turno / 60
 
-    with st.expander("Evento Especial"):
-        evento_especial = st.checkbox("¿Habrá un evento especial?")
-        fecha_inicio_evento = None
-        fecha_fin_evento = None
-        impacto_evento = 0
+    if duracion_turno < 4 or duracion_turno > 9:
+        st.error("La duración del turno debe estar entre 4 h y 9 h.")
+        st.stop()
 
-        if evento_especial:
-            fecha_inicio_evento = st.date_input("Fecha de inicio del evento")
-            fecha_fin_evento = st.date_input("Fecha de fin del evento")
-            impacto_evento = st.slider("Incremento en demanda (%)", min_value=0, max_value=200, value=20, step=1)
+    max_recursos = st.number_input(
+        "Máx. recursos disponibles (0 = sin tope)",
+        min_value=0, max_value=10_000, value=0, step=1
+    )
+    if max_recursos == 0:
+        max_recursos = None
 
-    with st.expander("Extensión del turno"):
-        col_h, col_m = st.columns(2)
-        turno_horas = col_h.number_input("Horas", min_value=4, max_value=9, value=6, step=1)
-        turno_minutos = col_m.number_input("Minutos", min_value=0, max_value=59, value=0, step=1)
-        duracion_turno_min = int(turno_horas * 60 + turno_minutos)
-        if duracion_turno_min < 240 or duracion_turno_min > 540:
-            st.error("La duración total debe estar entre 4 y 9 horas (inclusive).")
+# ════════════════════════════════════════
+# Carga del archivo
+# ════════════════════════════════════════
+archivo_csv = st.file_uploader("Sube un archivo CSV", type=["csv"])
 
-########################################
-# Funciones Principales
-########################################
-
-def procesar_datos(df: pd.DataFrame) -> pd.DataFrame:
-    df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce")
-    df["items"] = pd.to_numeric(df["items"], errors="coerce").fillna(0)
-    df["slot_from"] = pd.to_datetime(df["slot_from"], errors="coerce").dt.hour
-    df = df[df["estado"] == "FINISHED"]
-    df = df[(df["slot_from"] >= hora_apertura) & (df["slot_from"] <= hora_cierre)]
-
-    # Mapeo de weekday a español y orden
-    dias_map = {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes", 5: "Sábado", 6: "Domingo"}
-    df["weekday_num"] = df["Fecha"].dt.weekday
-    df["day_of_week"] = df["weekday_num"].map(dias_map).fillna("Desconocido")
-
-    DIAS_ORDENADOS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-    df["day_of_week"] = pd.Categorical(df["day_of_week"], categories=DIAS_ORDENADOS, ordered=True)
+def leer_datos(archivo) -> pd.DataFrame:
+    """Devuelve DataFrame con columnas ['hora', 'demanda']"""
+    df = pd.read_csv(archivo)
+    # Aseguramos tipos
+    df["hora"] = df["hora"].astype(int)
+    df["demanda"] = df["demanda"].astype(float)
     return df
 
-# ----- GRÁFICAS Y TABLAS (sin cambios en lógica) ----- #
-# ... (se conserva tu lógica original de gráficos y pronósticos)
+def calcular_recursos(df: pd.DataFrame, productividad: int) -> pd.DataFrame:
+    """Añade columna 'recursos_necesarios' redondeada hacia arriba."""
+    df = df.copy()
+    df["recursos_necesarios"] = np.ceil(df["demanda"] / productividad).astype(int)
+    return df
 
-########################################
-# Nuevas funciones para turnos flexibles y alertas
-########################################
+def construir_turnos(df: pd.DataFrame,
+                     duracion: float,
+                     max_rec: int | None = None) -> tuple[pd.DataFrame, bool]:
+    """
+    Crea tabla 'Sistema de Turnos – Recursos Totales'.
+    Devuelve (df_turnos, under_staff_bool).
+    Estrategia simple: usar el pico máximo de la demanda.
+    """
+    pico = int(df["recursos_necesarios"].max())
+    requerido = pico
+    under_staff = False
 
-def asignar_turnos(df_recursos: pd.DataFrame, duracion_min: int) -> pd.DataFrame:
-    """Genera sistema de turnos con duración flexible (min)."""
-    resultados = []
-    bloque_horas = math.ceil(duracion_min / 60)  # nº de horas completas que cubre el turno
+    if max_rec is not None and pico > max_rec:
+        requerido = max_rec
+        under_staff = True
 
-    for fecha_idx in df_recursos.index:
-        fila = df_recursos.loc[fecha_idx]
-        horas_orden = sorted(fila.index, key=lambda x: int(x))
-        i = 0
-        while i < len(horas_orden):
-            start_h = int(horas_orden[i])
-            end_h = min(start_h + bloque_horas - 1, int(horas_orden[-1]))
-            subset_hours = [h for h in horas_orden if start_h <= int(h) <= end_h]
-            max_recs = int(fila[subset_hours].max())
+    turnos = pd.DataFrame({
+        "Turno": ["Turno 1"],
+        "Duración (horas)": [round(duracion, 2)],
+        "Recursos Asignados": [requerido]
+    })
+    return turnos, under_staff
 
-            # Etiqueta de turno con minutos exactos
-            hora_inicio_lbl = f"{start_h:02d}:00"
-            fecha_dummy = datetime(2000, 1, 1, start_h, 0)
-            hora_fin_lbl = (fecha_dummy + timedelta(minutes=duracion_min - 1)).strftime("%H:%M")
+def tabla_pronostico(df_modelo: pd.DataFrame) -> pd.DataFrame:
+    """
+    Placeholder para pronóstico/detalle adicional.
+    Ahora mismo replica recursos necesarios.
+    """
+    return df_modelo.copy()
 
-            turno_info = {
-                "Fecha": fecha_idx,
-                "Turno": f"{hora_inicio_lbl} - {hora_fin_lbl}",
-                "Recursos": max_recs,
-            }
-            resultados.append(turno_info)
-            i += len(subset_hours)
-    return pd.DataFrame(resultados)
-
-########################################
-# Generar análisis (reordenado para mostrar turnos primero)
-########################################
-
-def generar_analisis(df: pd.DataFrame, duracion_turno_min: int, max_recursos: int):
-    # Placeholder para que la tabla final aparezca PRIMERO
-    turnos_container = st.container()
-    tablas_por_modelo = {}
-
-    # 1) Pronósticos por modelo (se mantiene tu lógica, sin gráficos aún)
-    modelos_operativos = df["operational_model"].unique()
-    for modelo in modelos_operativos:
-        df_modelo = df[df["operational_model"] == modelo].copy()
-        pron_df = tabla_pronostico(df_modelo, modelo)  # Usa tu función original
-        tablas_por_modelo[modelo] = pron_df
-
-    # 2) Consolidar recursos y crear sistema de turnos
-    if len(tablas_por_modelo) > 1:
-        df_suma = unir_tablas_recursos(tablas_por_modelo)
-    else:
-        df_suma = list(tablas_por_modelo.values())[0]
-
-    df_turnos = asignar_turnos(df_suma, duracion_turno_min)
-
-    # -- Advertencias Under / Over Staff --
-    if max_recursos > 0:
-        total_req = df_turnos["Recursos"].sum()
-        if total_req > max_recursos:
-            st.warning(f"⚠️ UnderStaff: se requieren {total_req} recursos y el máximo configurado es {max_recursos}.")
-        elif total_req < max_recursos:
-            st.info(f"ℹ️ OverStaff: se requieren {total_req} recursos de un máximo de {max_recursos}.")
-
-    # 3) Mostrar la tabla de turnos **antes** de los gráficos
-    with turnos_container:
-        st.subheader("Sistema de Turnos – Recursos Totales")
-        st.dataframe(df_turnos)
-
-    st.markdown("---")
-
-    # 4) Gráficos y detalles por modelo (tu lógica original)
-    for modelo in modelos_operativos:
-        df_modelo = df[df["operational_model"] == modelo].copy()
-        colA, colB = st.columns(2)
-        with colA:
-            grafico1_historia(df_modelo, modelo)
-        with colB:
-            grafico2_dia_semana(df_modelo, modelo)
-        grafico3_preferencia_slot(df_modelo, modelo)
-        st.markdown("---")
-
-########################################
+# ════════════════════════════════════════
 # Ejecución principal
-########################################
-if archivo_csv is not None:
-    df_original = pd.read_csv(archivo_csv)
-    st.success("Archivo cargado correctamente")
-    st.dataframe(df_original.head())
+# ════════════════════════════════════════
+if archivo_csv:
+    try:
+        df_base = leer_datos(archivo_csv)
+    except Exception as e:
+        st.error(f"Error leyendo el archivo: {e}")
+        st.stop()
 
-    if st.button("Generar Análisis"):
-        df_proc = procesar_datos(df_original)
-        generar_analisis(df_proc, duracion_turno_min, max_recursos_disponibles)
+    df_proc = calcular_recursos(df_base, productividad)
 
-st.write("¡Listo para generar reportes con In-Staffing!")
+    df_turnos, under_staff = construir_turnos(
+        df_proc, duracion_turno, max_recursos
+    )
 
+    # ─── 1) Mostrar primero la tabla de turnos ─────────────────
+    st.subheader("📋 Sistema de Turnos – Recursos Totales")
+    st.dataframe(df_turnos, hide_index=True)
+
+    if under_staff:
+        st.warning(
+            "⚠️  La demanda requiere más personal del disponible. "
+            "Apareces *UnderStaff* para el pico de actividad."
+        )
+
+    # ─── 2) Resto del análisis ─────────────────────────────────
+    with st.expander("Detalles hora a hora"):
+        st.dataframe(df_proc, hide_index=True)
+
+        # Gráfico
+        fig, ax = plt.subplots()
+        ax.bar(df_proc["hora"], df_proc["recursos_necesarios"])
+        ax.set_xlabel("Hora del día")
+        ax.set_ylabel("Recursos necesarios")
+        ax.set_title("Recursos necesarios por hora")
+        st.pyplot(fig)
+
+    # ─── 3) Pronóstico / tabla adicional (placeholder) ─────────
+    with st.expander("Tabla de Pronóstico (demo)"):
+        st.dataframe(tabla_pronostico(df_proc), hide_index=True)
+
+else:
+    st.info("📄 Sube un archivo CSV para comenzar el análisis.")
