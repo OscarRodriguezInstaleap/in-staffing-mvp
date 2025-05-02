@@ -193,33 +193,46 @@ def unir_tablas(tablas):
     return total.fillna(0).astype(int)
 
 
-def asignar_turnos(df_recursos, dur_turno, max_rec=None):
-    """Versión simple: cada día usa bloques consecutivos de dur_turno horas."""
+def asignar_turnos(df_recursos: pd.DataFrame,
+                   dur_turno: float,
+                   max_rec: int | None = None) -> pd.DataFrame:
+    """
+    Genera un sistema básico de turnos consecutivos de duración `dur_turno`
+    (en horas decimales).  Marca "⚠️" cuando la demanda del bloque
+    supera `max_rec` (si se especifica).
+
+    Retorna un DataFrame con columnas:
+    [Fecha, Turno, Recursos, UnderStaff]
+    """
     resultados = []
-    bloque = dur_turno
+    bloque = dur_turno                      # p. ej. 6, 6.25, 7.5
     for fecha in df_recursos.index:
         fila = df_recursos.loc[fecha]
+        # Aseguramos lista de horas como enteros ordenados
         horas_ordenadas = sorted(map(int, fila.index))
         i = 0
         while i < len(horas_ordenadas):
-            start_h = horas_ordenadas[i]
-            end_h = min(start_h + bloque - 1, horas_ordenadas[-1])
+            start_h = int(horas_ordenadas[i])
+            end_h = int(min(start_h + bloque - 1, horas_ordenadas[-1]))
+
             subset = [h for h in horas_ordenadas if start_h <= h <= end_h]
             req = int(fila[subset].max())
-            if max_rec:
-                under_staff = req > max_rec
+
+            under = False
+            if max_rec is not None:
+                under = req > max_rec
                 req = min(req, max_rec)
-            else:
-                under_staff = False
+
             resultados.append(
                 {
                     "Fecha": fecha,
                     "Turno": f"{start_h:02d}:00‑{end_h:02d}:00",
                     "Recursos": req,
-                    "UnderStaff": "⚠️" if under_staff else "",
+                    "UnderStaff": "⚠️" if under else "",
                 }
             )
             i += len(subset)
+
     return pd.DataFrame(resultados)
 
 
