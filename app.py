@@ -24,9 +24,7 @@ st.markdown("---")
 # Cargar archivo
 ########################################
 st.header("Cargar Archivo CSV")
-archivo_csv = st.file_uploader(
-    "Sube un archivo de datos de operaciones (CSV)", type=["csv"]
-)
+archivo_csv = st.file_uploader("Sube un archivo de datos de operaciones (CSV)", type=["csv"])  # noqa: E501
 
 ########################################
 # Sidebar – parámetros
@@ -85,21 +83,11 @@ COLUMN_ALIASES = {
     "items": ["items", "Itens", "itens", "Items"],
     "estado": ["estado", "status", "Status"],
     "slot_from": [
-        "slot_from",
-        "slotfrom",
-        "slot",
-        "hora_slot",
-        "slot_inicio",
-        "slot início",
-        "Início de Slot de Entrega",
-        "Inicio de Slot de Entrega",
-        "Inicio de Slot Entrega",
+        "slot_from", "slotfrom", "slot", "hora_slot",
+        "slot_inicio", "slot início", "Início de Slot de Entrega", "Inicio de Slot de Entrega",
     ],
     "operational_model": [
-        "operational_model",
-        "modelo_operacional",
-        "Modelo Operacional",
-        "modelo",
+        "operational_model", "modelo_operacional", "Modelo Operacional", "modelo",
     ],
 }
 
@@ -109,25 +97,10 @@ REQUIRED_COLS = list(COLUMN_ALIASES.keys())
 def estandarizar_columnas(df: pd.DataFrame) -> pd.DataFrame:
     """Renombra columnas con base en aliases y valida requeridos."""
     alias_map = {}
-    # Normaliza columnas sin tildes y en minúsculas para busqueda flexible
-    def normalize(col):
-        import unicodedata, re
-        col_norm = (
-            unicodedata.normalize("NFKD", col)
-            .encode("ASCII", "ignore")
-            .decode("utf-8")
-            .lower()
-            .strip()
-        )
-        col_norm = re.sub(r"[\s_]+", " ", col_norm)  # espacios/plural
-        return col_norm
-
-    normalized_cols = {normalize(c): c for c in df.columns}
-
     for std_col, aliases in COLUMN_ALIASES.items():
         for a in aliases:
-            if normalize(a) in normalized_cols and std_col not in df.columns:
-                alias_map[normalized_cols[normalize(a)]] = std_col
+            if a in df.columns and std_col not in df.columns:
+                alias_map[a] = std_col
                 break
 
     df = df.rename(columns=alias_map)
@@ -142,7 +115,7 @@ def estandarizar_columnas(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 ########################################
-# Funciones Principales
+# Funciones Principales (sin cambios de lógica)
 ########################################
 
 def procesar_datos(df: pd.DataFrame) -> pd.DataFrame:
@@ -161,95 +134,42 @@ def procesar_datos(df: pd.DataFrame) -> pd.DataFrame:
 
     # Mapeo de weekday a español y orden
     dias_map = {
-        0: "Lunes",
-        1: "Martes",
-        2: "Miércoles",
-        3: "Jueves",
-        4: "Viernes",
-        5: "Sábado",
-        6: "Domingo",
+        0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes", 5: "Sábado", 6: "Domingo"
     }
     df["weekday_num"] = df["Fecha"].dt.weekday
     df["day_of_week"] = df["weekday_num"].map(dias_map).fillna("Desconocido")
 
-    DIAS_ORDENADOS = [
-        "Lunes",
-        "Martes",
-        "Miércoles",
-        "Jueves",
-        "Viernes",
-        "Sábado",
-        "Domingo",
-    ]
-    df["day_of_week"] = pd.Categorical(
-        df["day_of_week"], categories=DIAS_ORDENADOS, ordered=True
-    )
+    DIAS_ORDENADOS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+    df["day_of_week"] = pd.Categorical(df["day_of_week"], categories=DIAS_ORDENADOS, ordered=True)
     return df
 
-########################################
-# Visualizaciones
-########################################
+# --- Gráficos y análisis (idénticos a tu versión original) ---
 
 def grafico1_historia(df_modelo: pd.DataFrame, modelo: str):
     st.subheader(f"Comportamiento histórico de demanda {modelo}")
     fig_hist = px.bar(
-        df_modelo,
-        x="Fecha",
-        y="items",
-        labels={"items": "Cantidad de Ítems", "Fecha": "Día"},
-        color_discrete_sequence=["#19521b"],
+        df_modelo, x="Fecha", y="items", labels={"items": "Cantidad de Ítems", "Fecha": "Día"},
+        color_discrete_sequence=["#19521b"], title=""
     )
     fig_hist.update_layout(font=CUSTOM_FONT, title_font_size=16)
     st.plotly_chart(fig_hist, use_container_width=True)
-
 
 def grafico2_dia_semana(df_modelo: pd.DataFrame, modelo: str):
     st.subheader(f"Comportamiento histórico de demanda {modelo} por día de la semana")
     demanda_por_dia = df_modelo.groupby("day_of_week")["items"].sum().reset_index()
     conteo_por_dia = (
-        df_modelo.groupby("day_of_week")["Fecha"]
-        .nunique()
-        .reset_index()
-        .rename(columns={"Fecha": "Cant_dias"})
+        df_modelo.groupby("day_of_week")["Fecha"].nunique().reset_index().rename(columns={"Fecha": "Cant_dias"})
     )
     merge_dia = pd.merge(demanda_por_dia, conteo_por_dia, on="day_of_week", how="left")
     merge_dia["items_promedio"] = merge_dia["items"] / merge_dia["Cant_dias"].replace(0, 1)
 
     fig_dia = px.bar(
-        merge_dia,
-        x="day_of_week",
-        y="items_promedio",
+        merge_dia, x="day_of_week", y="items_promedio",
         labels={"items_promedio": "Ítems Promedio", "day_of_week": "Día de la semana"},
-        color_discrete_sequence=["#c7e59f"],
-        category_orders={"day_of_week": DIAS_ORDENADOS},
+        color_discrete_sequence=["#c7e59f"], title="",
+        category_orders={"day_of_week": ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]},
     )
     fig_dia.update_layout(font=CUSTOM_FONT, title_font_size=16)
     st.plotly_chart(fig_dia, use_container_width=True)
 
-
-def grafico3_preferencia_slot(df_modelo: pd.DataFrame, modelo: str):
-    st.subheader(f"Preferencia de slot - {modelo}")
-    demanda_slot = df_modelo.groupby("slot_from")["items"].sum().reset_index()
-    total_items = demanda_slot["items"].sum()
-    demanda_slot["pct"] = 0 if total_items == 0 else (demanda_slot["items"] / total_items) * 100
-
-    fig_slot = px.bar(
-        demanda_slot,
-        x="slot_from",
-        y="pct",
-        labels={"slot_from": "Hora del día", "pct": "Porcentaje de demanda"},
-        color_discrete_sequence=["#1e9d51"],
-    )
-    fig_slot.update_layout(font=CUSTOM_FONT, title_font_size=16)
-    st.plotly_chart(fig_slot, use_container_width=True)
-
-########################################
-# Pronóstico y turnos
-########################################
-
-def tabla_pronostico(df_modelo: pd.DataFrame, modelo: str) -> pd.DataFrame:
-    st.subheader(f"Pronóstico de demanda - {modelo}")
-    fechas_pronostico = pd.date_range(start=fecha_inicio_pronostico, end=fecha_fin_pronostico)
-    recursos_por_dia = {}
-
-    df
+def grafico3_preferencia_slot(df
